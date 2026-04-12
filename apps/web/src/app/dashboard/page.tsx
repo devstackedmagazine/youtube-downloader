@@ -1,10 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/lib/protected-route";
+import { MOCK_DOWNLOAD_HISTORY } from "@/lib/mock-data";
+
+const ITEMS_PER_PAGE = 10;
 
 export default function DashboardPage() {
   const { currentUser, logout } = useAuth();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [downloads, setDownloads] = useState(MOCK_DOWNLOAD_HISTORY);
+
+  const totalPages = Math.ceil(downloads.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const currentDownloads = downloads.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  const handleDelete = (id: string) => {
+    setDownloads(downloads.filter(item => item.id !== id));
+    // If we delete the last item on a page, we should go back
+    if (currentDownloads.length === 1 && currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
 
   return (
     <ProtectedRoute>
@@ -58,25 +76,56 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
-                  <tr className="hover:bg-gray-50 transition-colors">
-                    <td className="p-4 text-gray-900 font-medium truncate max-w-[200px]" title="Never Gonna Give You Up">Never Gonna Give You Up</td>
-                    <td className="p-4 text-gray-600">MP4</td>
-                    <td className="p-4 text-gray-600">1080p</td>
-                    <td className="p-4 text-gray-500">{new Date().toLocaleDateString()}</td>
-                    <td className="p-4 text-right">
-                      <button className="text-red-500 hover:text-red-700 font-medium transition-colors">Delete</button>
-                    </td>
-                  </tr>
+                  {currentDownloads.length > 0 ? (
+                    currentDownloads.map((dl) => (
+                      <tr key={dl.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="p-4 text-gray-900 font-medium truncate max-w-[200px]" title={dl.title}>{dl.title}</td>
+                        <td className="p-4 text-gray-600 uppercase">{dl.format}</td>
+                        <td className="p-4 text-gray-600">{dl.quality}</td>
+                        <td className="p-4 text-gray-500">{new Date(dl.date).toLocaleDateString()}</td>
+                        <td className="p-4 text-right">
+                          <button 
+                            onClick={() => handleDelete(dl.id)}
+                            className="text-red-500 hover:text-red-700 font-medium transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-gray-500">
+                        No downloads found.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
-            <div className="p-4 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
-              <span>Showing 1 of 1</span>
-              <div className="flex gap-2">
-                <button disabled className="px-3 py-1 border border-gray-200 rounded opacity-50 bg-gray-50">Previous</button>
-                <button disabled className="px-3 py-1 border border-gray-200 rounded opacity-50 bg-gray-50">Next</button>
+            {downloads.length > 0 && (
+              <div className="p-4 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
+                <span>
+                  Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, downloads.length)} of {downloads.length}
+                </span>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1} 
+                    className="px-3 py-1 border border-gray-200 rounded disabled:opacity-50 disabled:bg-gray-50 hover:bg-gray-100 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages} 
+                    className="px-3 py-1 border border-gray-200 rounded disabled:opacity-50 disabled:bg-gray-50 hover:bg-gray-100 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

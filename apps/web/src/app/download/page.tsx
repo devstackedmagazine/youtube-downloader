@@ -6,6 +6,7 @@ import URLInput from "@/components/URLInput";
 import FormatSelector from "@/components/FormatSelector";
 import DownloadProgress from "@/components/DownloadProgress";
 import ProtectedRoute from "@/lib/protected-route";
+import { MOCK_VIDEOS } from "@/lib/mock-data";
 
 export default function DownloadPage() {
   const [status, setStatus] = useState<DownloadStatus>("idle");
@@ -19,14 +20,19 @@ export default function DownloadPage() {
     
     try {
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      const mockData: VideoMetadata = {
-        id: "dQw4w9WgXcQ",
-        title: "Never Gonna Give You Up - Rick Astley (Official Music Video)",
-        duration: 213,
-        thumbnail: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-        channel: "Rick Astley",
-        formats: []
-      };
+      
+      // Extract video ID from URL for mocking (fallback to Rick Astley)
+      let videoId = "dQw4w9WgXcQ"; 
+      try {
+        const urlObj = new URL(url);
+        if (urlObj.hostname.includes("youtube.com")) {
+          videoId = urlObj.searchParams.get("v") || videoId;
+        } else if (urlObj.hostname.includes("youtu.be")) {
+          videoId = urlObj.pathname.slice(1);
+        }
+      } catch (e) {}
+
+      const mockData: VideoMetadata = MOCK_VIDEOS[videoId] || MOCK_VIDEOS["dQw4w9WgXcQ"];
       
       setMetadata(mockData);
       setStatus("ready");
@@ -40,7 +46,7 @@ export default function DownloadPage() {
     if (!metadata) return;
     setStatus("processing");
     const mockJob: DownloadJob = {
-      id: "job_12345",
+      id: `job_${Math.random().toString(36).substr(2, 9)}`,
       status: "processing",
       progress: 0,
       eta: "Calculating..."
@@ -67,7 +73,7 @@ export default function DownloadPage() {
           eta: `${Math.floor((100 - currentProgress) / 10)}s`
         } : null);
       }
-    }, 1000);
+    }, 800);
   };
 
   const handleReset = () => {
@@ -84,41 +90,41 @@ export default function DownloadPage() {
           <h1 className="text-3xl md:text-5xl font-extrabold text-gray-900 mb-4">
             Download Your URL
           </h1>
-        <p className="text-lg text-gray-600">
-          Paste your YouTube link below to convert it easily to MP4 or MP3 formats.
-        </p>
-      </div>
+          <p className="text-lg text-gray-600">
+            Paste your YouTube link below to convert it easily to MP4 or MP3 formats.
+          </p>
+        </div>
 
-      <URLInput 
-        onSubmit={handleURLSubmit} 
-        status={status} 
-        errorMessage={status === "failed" && !job ? errorMessage : undefined} 
-      />
-
-      {status !== "idle" && status !== "fetching" && metadata && (!job || job.status === "processing" || job.status === "completed") && (
-        <FormatSelector 
-          metadata={metadata} 
-          onDownload={handleDownloadStart} 
-          isProcessing={status === "processing"} 
+        <URLInput 
+          onSubmit={handleURLSubmit} 
+          status={status} 
+          errorMessage={status === "failed" && !job ? errorMessage : undefined} 
         />
-      )}
 
-      {job && (job.status === "processing" || job.status === "completed" || job.status === "failed") && (
-        <DownloadProgress 
-          job={job} 
-          onReset={handleReset} 
-        />
-      )}
-      
-      <div className="mt-16 w-full max-w-2xl text-center text-sm text-gray-500">
-        <p className="mb-2">
-          By using our service you accept our <a href="#" className="underline hover:text-indigo-600">Terms of Service</a>.
-        </p>
-        <p>
-          Downloading copyrighted material without permission is illegal. Keep to public domain or personal content only.
-        </p>
+        {status !== "idle" && status !== "fetching" && metadata && (!job || job.status === "processing" || job.status === "completed") && (
+          <FormatSelector 
+            metadata={metadata} 
+            onDownload={handleDownloadStart} 
+            isProcessing={status === "processing"} 
+          />
+        )}
+
+        {job && (job.status === "processing" || job.status === "completed" || job.status === "failed") && (
+          <DownloadProgress 
+            job={job} 
+            onReset={handleReset} 
+          />
+        )}
+        
+        <div className="mt-16 w-full max-w-2xl text-center text-sm text-gray-500">
+          <p className="mb-2">
+            By using our service you accept our <a href="#" className="underline hover:text-indigo-600">Terms of Service</a>.
+          </p>
+          <p>
+            Downloading copyrighted material without permission is illegal. Keep to public domain or personal content only.
+          </p>
+        </div>
       </div>
-    </div>
     </ProtectedRoute>
   );
 }
