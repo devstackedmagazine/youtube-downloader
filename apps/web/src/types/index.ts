@@ -35,3 +35,9 @@ export interface DownloadJob {
   error_message?: string;
   download_link?: string;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  createdAt: string;
+}

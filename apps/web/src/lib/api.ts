@@ -24,3 +24,28 @@ export const getDownloadStatus = async (jobId: string): Promise<DownloadJob> => 
   if (!req.ok) throw new Error("Failed to get download status");
   return req.json();
 };
+
+// Mock Authentication Services
+import { User } from "../types";
+
+const mockDelay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const mockSignup = async (email: string, password: string): Promise<{ user: User; token: string }> => {
+  await mockDelay(1000);
+  const user: User = { id: Math.random().toString(36).substr(2, 9), email, createdAt: new Date().toISOString() };
+  return { user, token: "mock-jwt-token" };
+};
+
+export const mockLogin = async (email: string, password: string): Promise<{ user: User; token: string }> => {
+  await mockDelay(1000);
+  const user: User = { id: "mock_user_1", email, createdAt: new Date().toISOString() };
+  return { user, token: "mock-jwt-token" };
+};
+
+export const mockLogout = async (): Promise<void> => {
+  await mockDelay(500);
+};
+
+export const mockResetPassword = async (email: string, code?: string, newPassword?: string): Promise<void> => {
+  await mockDelay(1000);
+};

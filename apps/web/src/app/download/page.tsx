@@ -5,6 +5,7 @@ import { DownloadStatus, VideoMetadata, VideoFormat, DownloadQuality, DownloadJo
 import URLInput from "@/components/URLInput";
 import FormatSelector from "@/components/FormatSelector";
 import DownloadProgress from "@/components/DownloadProgress";
+import ProtectedRoute from "@/lib/protected-route";
 
 export default function DownloadPage() {
   const [status, setStatus] = useState<DownloadStatus>("idle");
@@ -77,11 +78,12 @@ export default function DownloadPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-start py-12 md:py-20 min-h-screen bg-gray-50 px-4 md:px-6 flex-1">
-      <div className="w-full max-w-4xl text-center mb-10">
-        <h1 className="text-3xl md:text-5xl font-extrabold text-gray-900 mb-4">
-          Download Your URL
-        </h1>
+    <ProtectedRoute>
+      <div className="flex flex-col items-center justify-start py-12 md:py-20 min-h-screen bg-gray-50 px-4 md:px-6 flex-1">
+        <div className="w-full max-w-4xl text-center mb-10">
+          <h1 className="text-3xl md:text-5xl font-extrabold text-gray-900 mb-4">
+            Download Your URL
+          </h1>
         <p className="text-lg text-gray-600">
           Paste your YouTube link below to convert it easily to MP4 or MP3 formats.
         </p>
@@ -117,5 +119,6 @@ export default function DownloadPage() {
         </p>
       </div>
     </div>
+    </ProtectedRoute>
   );
 }
