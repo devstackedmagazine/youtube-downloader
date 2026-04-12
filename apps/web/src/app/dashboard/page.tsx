@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/lib/protected-route";
 import { MOCK_DOWNLOAD_HISTORY } from "@/lib/mock-data";
+import DonationWidget from "@/components/DonationWidget";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -126,6 +127,10 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
+          </div>
+          
+          <div className="mt-12 flex justify-center">
+            <DonationWidget />
           </div>
         </div>
       </div>

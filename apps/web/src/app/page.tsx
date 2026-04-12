@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Metadata } from "next";
+import AdPlaceholder from "@/components/AdPlaceholder";
 
 export const metadata: Metadata = {
   title: "Free YouTube Video Downloader - Download Videos as MP4 or MP3",
@@ -20,7 +21,7 @@ export default function Home() {
             Convert and download your favorite YouTube videos as high-quality MP4 or MP3.
             No software installation required, no limits, and absolutely free.
           </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
+          <div className="flex flex-col sm:flex-row justify-center gap-4 mb-10">
             <Link 
               href="/download" 
               className="inline-flex h-12 items-center justify-center rounded-md bg-indigo-600 px-8 text-base font-medium text-white shadow transition-colors hover:bg-indigo-700"
@@ -33,6 +34,10 @@ export default function Home() {
             >
               Learn More
             </Link>
+          </div>
+          
+          <div className="max-w-3xl mx-auto mt-12">
+            <AdPlaceholder className="h-32" />
           </div>
         </div>
       </section>

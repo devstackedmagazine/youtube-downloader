@@ -7,6 +7,8 @@ import FormatSelector from "@/components/FormatSelector";
 import DownloadProgress from "@/components/DownloadProgress";
 import ProtectedRoute from "@/lib/protected-route";
 import { MOCK_VIDEOS } from "@/lib/mock-data";
+import AdPlaceholder from "@/components/AdPlaceholder";
+import { trackEvent } from "@/lib/analytics";
 
 export default function DownloadPage() {
   const [status, setStatus] = useState<DownloadStatus>("idle");
@@ -36,15 +38,19 @@ export default function DownloadPage() {
       
       setMetadata(mockData);
       setStatus("ready");
-    } catch (e: any) {
+      trackEvent("video_fetched", { videoId });
+    } catch (e: unknown) {
       setStatus("failed");
       setErrorMessage("Failed to fetch video. Please check the URL and try again.");
+      trackEvent("video_fetch_failed", { error: String(e) });
     }
   };
 
   const handleDownloadStart = async (format: VideoFormat, quality: DownloadQuality) => {
     if (!metadata) return;
     setStatus("processing");
+    trackEvent("download_started", { videoId: metadata.id, format, quality });
+
     const mockJob: DownloadJob = {
       id: `job_${Math.random().toString(36).substr(2, 9)}`,
       status: "processing",
@@ -59,6 +65,7 @@ export default function DownloadPage() {
       if (currentProgress >= 100) {
         clearInterval(interval);
         setStatus("completed");
+        trackEvent("download_completed", { jobId: mockJob.id });
         setJob(prev => prev ? {
           ...prev,
           status: "completed",
@@ -86,6 +93,11 @@ export default function DownloadPage() {
   return (
     <ProtectedRoute>
       <div className="flex flex-col items-center justify-start py-12 md:py-20 min-h-screen bg-gray-50 px-4 md:px-6 flex-1">
+        
+        <div className="w-full max-w-4xl mb-8">
+          <AdPlaceholder className="h-24" />
+        </div>
+
         <div className="w-full max-w-4xl text-center mb-10">
           <h1 className="text-3xl md:text-5xl font-extrabold text-gray-900 mb-4">
             Download Your URL
@@ -116,7 +128,11 @@ export default function DownloadPage() {
           />
         )}
         
-        <div className="mt-16 w-full max-w-2xl text-center text-sm text-gray-500">
+        <div className="mt-12 w-full max-w-4xl">
+          <AdPlaceholder className="h-32" />
+        </div>
+
+        <div className="mt-12 w-full max-w-2xl text-center text-sm text-gray-500">
           <p className="mb-2">
             By using our service you accept our <a href="#" className="underline hover:text-indigo-600">Terms of Service</a>.
           </p>
