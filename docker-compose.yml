@@ -1,19 +1,19 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  postgres:
+  db:
     image: postgres:15
     environment:
-      POSTGRES_DB: youtube_dl
-      POSTGRES_USER: developer
-      POSTGRES_PASSWORD: dev_password
+      POSTGRES_USER: poster
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: youtube_downloader
     ports:
-      - "5432:5432"
+      - "5433:5432" # Changed mapping due to local postgres instance
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
-    image: redis:7-alpine
+    image: redis:5.0.1
     ports:
       - "6379:6379"
 

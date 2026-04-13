@@ -3,7 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.routes import auth, user
+from app.routes import auth, user, downloads
 import logging
 
 # Setup logging
@@ -40,6 +40,7 @@ app.add_middleware(
 # Routes
 app.include_router(auth.router, prefix="/api")
 app.include_router(user.router, prefix="/api")
+app.include_router(downloads.router, prefix="/api")
 
 # Health check
 @app.get("/api/health")
