@@ -14,6 +14,7 @@ async def download_video(youtube_url: str, output_path: str, format: str = 'mp4'
         'outtmpl': output_path,
         'quiet': True,
         'no_warnings': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
     }
     
     if format == 'mp3':

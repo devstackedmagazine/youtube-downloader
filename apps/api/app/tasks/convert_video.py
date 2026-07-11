@@ -1,140 +1,131 @@
-import asyncio
-from app.tasks.celery_app import celery_app
-from app.dependencies import get_db
-from app.models.download import Download
-from sqlalchemy.orm import Session
-from sqlalchemy import select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-import os
-import uuid
+import glob
+import re
+import shutil
+import subprocess
+import json
+from pathlib import Path
+from typing import Any
 
-# Define database connection statically for celery tasks Since we are inside a blocking process we need a sync session
-DATABASE_URL_SYNC = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/ytdb").replace("postgresql+asyncpg", "postgresql")
-engine_sync = create_engine(DATABASE_URL_SYNC)
-SessionLocalSync = sessionmaker(autocommit=False, autoflush=False, bind=engine_sync)
+import redis
+import yt_dlp
+from yt_dlp.utils import sanitize_filename
+
+from app.config import get_settings
+from app.tasks.celery_app import celery_app
+
+JOB_TTL_SECONDS = 24 * 60 * 60
+settings = get_settings()
+redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+def job_key(job_id: str) -> str:
+    return f"download:job:{job_id}"
+
+
+def update_job(job_id: str, **values: object) -> None:
+    redis_client.hset(job_key(job_id), mapping={key: str(value) for key, value in values.items()})
+    redis_client.expire(job_key(job_id), JOB_TTL_SECONDS)
+
+
+def ensure_aac_in_mp4(path: Path) -> Path:
+    """Re-encode audio to AAC if the file has a non-AAC audio codec."""
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        streams = json.loads(probe.stdout).get("streams", [])
+        audio_codec = next((s["codec_name"] for s in streams if s["codec_type"] == "audio"), None)
+        if audio_codec and audio_codec.lower() != "aac":
+            fixed = path.with_stem(path.stem + "_temp")
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", str(path), "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", str(fixed)],
+                capture_output=True, text=True, timeout=600,
+            )
+            path.unlink()
+            fixed.rename(path)
+    except Exception:
+        pass
+    return path
+
+
+def format_selector(format_value: str, quality_value: str) -> str:
+    if format_value == "mp3":
+        return "bestaudio/best"
+    max_height = re.sub(r"\D", "", quality_value) or "720"
+    # Best quality regardless of codec. Audio is re-encoded to AAC after download.
+    return f"bv*[height<={max_height}]+ba/b[height<={max_height}]/b"
+
+
+def download_options(job_id: str, job: dict[str, str], job_dir: Path) -> dict[str, Any]:
+    format_value = job["format"]
+    is_playlist = job.get("scope") == "playlist"
+    preferred_quality = re.sub(r"\D", "", job.get("quality", "192")) or "192"
+
+    def report_progress(data: dict[str, Any]) -> None:
+        if data.get("status") != "downloading":
+            return
+        total = data.get("total_bytes") or data.get("total_bytes_estimate") or 0
+        downloaded = data.get("downloaded_bytes") or 0
+        if total:
+            # Keep room for ffmpeg post-processing and archive creation.
+            update_job(job_id, progress=min(90, max(10, int(downloaded / total * 80) + 10)))
+
+    name_template = "%(playlist_index)03d - %(title).180B.%(ext)s" if is_playlist else "media.%(ext)s"
+    options: dict[str, Any] = {
+        "format": format_selector(format_value, job.get("quality", "720p")),
+        "outtmpl": str(job_dir / name_template),
+        "noplaylist": not is_playlist,
+        "merge_output_format": "mp4" if format_value == "mp4" else None,
+        "quiet": True,
+        "no_warnings": True,
+        "ignoreerrors": "only_download" if is_playlist else False,
+        "restrictfilenames": True,
+        "windowsfilenames": True,
+        "progress_hooks": [report_progress],
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+    }
+    if format_value == "mp3":
+        options["postprocessors"] = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": preferred_quality,
+        }]
+    return {key: value for key, value in options.items() if value is not None}
+
 
 @celery_app.task(bind=True)
-def convert_video_task(self, download_id: str):
-    """
-    Celery task that handles downloading and converting a YouTube video.
-    This runs asynchronously in the background.
-    """
-    # Create sync DB session to update download status
-    db = SessionLocalSync()
+def convert_video_task(self, job_id: str) -> None:
+    job = redis_client.hgetall(job_key(job_id))
+    if not job:
+        return
 
+    job_dir = Path(settings.DOWNLOAD_DIR).resolve() / job_id
     try:
-        # 1. Update status to 'processing'
-        download = db.query(Download).filter(Download.id == download_id).first()
-        if not download:
-            print(f"Download {download_id} not found.")
-            return
+        job_dir.mkdir(parents=True, exist_ok=True)
+        update_job(job_id, status="processing", progress=5, error_message="")
 
-        download.status = "processing"
-        
-        # We start with 10% progress
-        download.progress = 10.0
-        db.commit()
+        with yt_dlp.YoutubeDL(download_options(job_id, job, job_dir)) as ydl:
+            info = ydl.extract_info(job["youtube_url"], download=True)
 
-        # Generate output paths
-        base_dir = os.path.join(os.getcwd(), 'tmp_downloads')
-        os.makedirs(base_dir, exist_ok=True)
-        # Using the video id or uuid to avoid conflicts
-        unique_id = str(uuid.uuid4())
-        output_filename = f"{download.video_id}_{unique_id}.{download.format.value}"
-        output_path = os.path.join(base_dir, output_filename)
+        title = sanitize_filename(info.get("title") or "download", restricted=True)
+        update_job(job_id, title=title, progress=92)
 
-        print(f"Downloading {download.youtube_url} to {output_path}")
+        if job.get("scope") == "playlist":
+            if not any(job_dir.iterdir()):
+                raise FileNotFoundError("yt-dlp could not download any playlist items")
+            archive_base = job_dir.parent / f"{job_id}_playlist"
+            archive_path = Path(shutil.make_archive(str(archive_base), "zip", root_dir=job_dir))
+            shutil.rmtree(job_dir)
+            output_path = archive_path
+        else:
+            matches = [Path(path) for path in glob.glob(str(job_dir / "media.*")) if not path.endswith((".part", ".ytdl"))]
+            if not matches:
+                raise FileNotFoundError("yt-dlp did not create a downloadable media file")
+            output_path = matches[0]
+            if job.get("format") == "mp4":
+                ensure_aac_in_mp4(output_path)
 
-        # 2. Extract and download the video (blocking since Celery workers are sync)
-        import yt_dlp
-
-        # Download options
-        ydl_opts = {
-            # Use format appropriately. If mp4, use best available up to resolution, if mp3 use audio only.
-            'format': f'bestvideo[height<={download.quality.strip("p")}]+bestaudio/best' if download.format.value == 'mp4' else 'bestaudio/best',
-            'outtmpl': output_path,
-            'quiet': True,
-            'no_warnings': True,
-        }
-
-        # If it's an MP3 format, we might need ffmpeg post processing directly during yt-dlp to convert the downloaded audio container
-        if download.format.value == 'mp3':
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }]
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([download.youtube_url])
-
-        # yt-dlp renames the file automatically after postprocessing (e.g., test.m4a -> test.mp3)
-        # Update progressive status
-        download.progress = 50.0
-        db.commit()
-
-        # In a real-world scenario with dedicated ffmpeg service:
-        # If output_path does not exist or we need custom ffmpeg conversions beyond basic yt-dlp capabilities
-        # We would use the services/converter.py module here (using asyncio.run to execute async code in celery sync task)
-        # Example processing with ffmpeg wrapper:
-        
-        # For simplicity, yt-dlp often handles the initial muxing to mp4/webm or extraction to mp3 internally with ffmpeg.
-        # But assuming we must use explicit converters based on the previous specifications:
-        # We must adjust the filename logic if yt-dlp saved it differently (e.g. .mkv/.webm)
-
-        actual_output_path = output_path
-        # If yt-dlp generated an intermediate file without `.mp4`/`.mp3`, we'd scan and process it.
-        # But we instructed yt-dlp to save as output_path (which often inherits .webm or .mkv regardless of outtmpl if codecs differ)
-        
-        # Searching the output_path directory for variations due to yt-dlp suffix changing behaviour 
-        # (if outtmpl doesn't strictly match the final extension after container merge)
-        import glob
-        files_matching_prefix = glob.glob(f"{os.path.join(base_dir, download.video_id)}_{unique_id}.*")
-        if files_matching_prefix:
-            # yt-dlp creates final files, take the first matching our unique id prefix
-            # this avoids missing the file when yt-dlp appends .mp4/mkv/webm/mp3 dynamically.
-             raw_file = files_matching_prefix[0]
-             
-             # If it needs manual conversion to ensure exact requested format
-             # If yt-dlp didn't make it exactly MP4 or MP3 (e.g. webm video, m4a audio)
-             if download.format.value == 'mp4' and not raw_file.endswith('.mp4'):
-                 import asyncio
-                 from app.services.converter import convert_to_mp4
-                 final_path = os.path.join(base_dir, f"conv_{download.video_id}_{unique_id}.mp4")
-                 asyncio.run(convert_to_mp4(raw_file, final_path, download.quality))
-                 os.remove(raw_file)
-                 actual_output_path = final_path
-                 
-             elif download.format.value == 'mp3' and not raw_file.endswith('.mp3'):
-                 import asyncio
-                 from app.services.converter import convert_to_mp3
-                 final_path = os.path.join(base_dir, f"conv_{download.video_id}_{unique_id}.mp3")
-                 asyncio.run(convert_to_mp3(raw_file, final_path))
-                 os.remove(raw_file)
-                 actual_output_path = final_path
-             else:
-                 actual_output_path = raw_file
-
-
-        # 4. Mark completion
-        download.progress = 100.0
-        download.status = "completed"
-        # We store the absolute file path or relative URL depending on file serving strategy
-        download.file_path = actual_output_path
-        db.commit()
-
-        print(f"Task completed. File ready at {actual_output_path}")
-
-    except Exception as e:
-        print(f"Error converting video {download_id}: {e}")
-        db.rollback()
-        # Mark as failed
-        download = db.query(Download).filter(Download.id == download_id).first()
-        if download:
-            download.status = "failed"
-            download.error_message = str(e)
-            db.commit()
-
-    finally:
-        db.close()
+        update_job(job_id, status="completed", progress=100, file_path=str(output_path))
+    except Exception as error:
+        update_job(job_id, status="failed", error_message=str(error), progress=0)

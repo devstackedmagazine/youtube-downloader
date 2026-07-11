@@ -9,7 +9,7 @@ celery_app = Celery(
     "ytdl_tasks",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.convert_video"]
+    include=["app.tasks.convert_video", "app.tasks.cleanup"]
 )
 
 # Optional configuration
@@ -21,4 +21,10 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     task_time_limit=3600,  # 1 hour max
+    beat_schedule={
+        "remove-expired-download-files": {
+            "task": "app.tasks.cleanup.remove_expired_downloads",
+            "schedule": 3600.0,
+        },
+    },
 )

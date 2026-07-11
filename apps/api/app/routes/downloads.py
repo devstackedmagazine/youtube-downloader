@@ -1,147 +1,117 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
-from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
+import os
 import uuid
 
-from app.dependencies import get_db
-from app.models.download import Download
-from app.models.user import User
-from app.dependencies import get_current_user as current_user
-from app.schemas.download import DownloadCreate, DownloadResponse, DownloadStatusResponse, DownloadListResponse
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from redis.asyncio import Redis
+
+from app.config import get_settings
+from app.schemas.download import DownloadCreate, JobResponse
 from app.services.youtube import get_video_metadata, validate_youtube_url
 from app.tasks.convert_video import convert_video_task
 
 router = APIRouter()
+JOB_TTL_SECONDS = 24 * 60 * 60
 
-@router.post("/download", response_model=DownloadResponse)
-async def create_download(
-    download_req: DownloadCreate,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(current_user)
-):
-    """
-    Initializes a new download job.
-    1. Validates the YouTube URL.
-    2. Fetches metadata (title, duration, thumbnail).
-    3. Creates a `Download` record in PostgreSQL (status="pending").
-    4. Triggers `convert_video_task` in Celery.
-    """
-    url = str(download_req.youtube_url)
-    
-    # 1. Validate the URL
+
+async def get_redis(settings=Depends(get_settings)):
+    client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+    try:
+        yield client
+    finally:
+        await client.aclose()
+
+
+def job_key(job_id: str) -> str:
+    return f"download:job:{job_id}"
+
+
+@router.get("/metadata")
+async def metadata(url: str):
     if not validate_youtube_url(url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
 
-    # 2. Extract metadata synchronously via yt-dlp
     try:
-        metadata = get_video_metadata(url)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        data = await asyncio.wait_for(asyncio.to_thread(get_video_metadata, url), timeout=30)
+    except TimeoutError as error:
+        raise HTTPException(status_code=504, detail="Metadata lookup timed out. Please try again.") from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
-    # 3. Create database record
-    new_download = Download(
-        id=str(uuid.uuid4()),
-        user_id=user.id,
-        youtube_url=url,
-        title=metadata.get('title', 'Unknown Title'),
-        format=download_req.format,
-        quality=download_req.quality,
-        status="pending",
-        progress=0.0
-    )
-    db.add(new_download)
-    await db.commit()
-    await db.refresh(new_download)
-
-    # 4. Enqueue the task with Celery
-    convert_video_task.delay(new_download.id)
-
-    return DownloadResponse.model_validate(new_download)
-
-@router.get("/download/{download_id}/status", response_model=DownloadStatusResponse)
-async def get_download_status(
-    download_id: str,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(current_user)
-):
-    """
-    Returns the current status of a specific download job.
-    """
-    result = await db.execute(select(Download).filter(Download.id == download_id, Download.user_id == user.id))
-    download = result.scalar_one_or_none()
-
-    if not download:
-        raise HTTPException(status_code=404, detail="Download not found")
-
-    response_data = {
-        "id": download.id,
-        "status": download.status,
-        "progress": download.progress,
-        "error_message": download.error_message
+    return {
+        "id": data.get("id"),
+        "title": data.get("title", "Unknown Title"),
+        "duration": data.get("duration", 0),
+        "thumbnail": data.get("thumbnail_url"),
+        "channel": data.get("channel", "Unknown Channel"),
+        "formats": data.get("formats", []),
+        "is_playlist": data.get("is_playlist", False),
+        "playlist_count": data.get("playlist_count", 0),
+        "playlist_title": data.get("playlist_title"),
     }
-    
-    # Expose the download URL only if completed
-    if download.status == "completed" and download.file_path:
-        response_data["download_url"] = f"/downloads/{download.id}/file" # Implement file serving route later
 
-    return DownloadStatusResponse(**response_data)
 
-@router.get("/downloads", response_model=DownloadListResponse)
-async def list_downloads(
-    skip: int = 0,
-    limit: int = 10,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(current_user)
-):
-    """
-    Lists all previous downloads with basic pagination.
-    """
-    result = await db.execute(
-        select(Download)
-        .filter(Download.user_id == user.id)
-        .order_by(Download.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-    )
-    downloads = result.scalars().all()
+@router.post("/download", response_model=JobResponse)
+async def create_download(download_req: DownloadCreate, redis: Redis = Depends(get_redis)):
+    url = download_req.youtube_url
+    if not validate_youtube_url(url):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
 
-    # Get total count
-    count_result = await db.execute(
-        select(db.func.count(Download.id)).filter(Download.user_id == user.id)
-    )
-    total = count_result.scalar_one()
+    job_id = str(uuid.uuid4())
+    key = job_key(job_id)
+    await redis.hset(key, mapping={
+        "id": job_id,
+        "youtube_url": url,
+        "format": download_req.format.value,
+        "quality": download_req.quality,
+        "scope": download_req.scope.value,
+        "status": "pending",
+        "progress": "0",
+        "error_message": "",
+    })
+    await redis.expire(key, JOB_TTL_SECONDS)
 
-    return DownloadListResponse(
-        items=[DownloadResponse.model_validate(d) for d in downloads],
-        total=total
-    )
+    try:
+        convert_video_task.delay(job_id)
+    except Exception as error:
+        await redis.hset(key, mapping={"status": "failed", "error_message": "Could not queue the download. Please try again."})
+        raise HTTPException(status_code=503, detail="Could not queue the download. Please try again.") from error
 
-@router.delete("/downloads/{download_id}")
-async def delete_download(
-    download_id: str,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(current_user)
-):
-    """
-    Deletes the database record of a download.
-    (Ideally should also remove the file from storage if it exists).
-    """
-    result = await db.execute(select(Download).filter(Download.id == download_id, Download.user_id == user.id))
-    download = result.scalar_one_or_none()
+    return JobResponse(id=job_id, status="pending", progress=0)
 
-    if not download:
+
+@router.get("/download/{download_id}/status", response_model=JobResponse)
+async def get_download_status(download_id: str, redis: Redis = Depends(get_redis)):
+    job = await redis.hgetall(job_key(download_id))
+    if not job:
         raise HTTPException(status_code=404, detail="Download not found")
-        
-    import os
-    # Small cleanup step
-    if download.file_path and os.path.exists(download.file_path):
-        try:
-            os.remove(download.file_path)
-        except Exception as e:
-            print(f"Error removing file {download.file_path}: {e}")
 
-    await db.delete(download)
-    await db.commit()
+    download_url = None
+    if job.get("status") == "completed" and job.get("file_path") and os.path.isfile(job["file_path"]):
+        download_url = f"/api/downloads/{download_id}/file"
 
-    return {"detail": "Download record deleted"}
+    return JobResponse(
+        id=download_id,
+        status=job.get("status", "processing"),
+        progress=int(float(job.get("progress", 0))),
+        error_message=job.get("error_message") or None,
+        download_link=download_url,
+    )
+
+
+@router.get("/downloads/{download_id}/file")
+async def download_file(download_id: str, redis: Redis = Depends(get_redis)):
+    job = await redis.hgetall(job_key(download_id))
+    if not job or job.get("status") != "completed" or not job.get("file_path"):
+        raise HTTPException(status_code=404, detail="File not found")
+    output_path = os.path.realpath(job["file_path"])
+    download_root = os.path.realpath(get_settings().DOWNLOAD_DIR)
+    if not output_path.startswith(download_root + os.sep) or not os.path.isfile(output_path):
+        raise HTTPException(status_code=410, detail="File has expired")
+
+    is_playlist = job.get("scope") == "playlist"
+    media_type = "application/zip" if is_playlist else ("audio/mpeg" if job.get("format") == "mp3" else "video/mp4")
+    extension = "zip" if is_playlist else job.get("format", "mp4")
+    filename = f"{job.get('title', 'download')}.{extension}".replace("/", "-").replace("\\", "-")
+    return FileResponse(output_path, media_type=media_type, filename=filename)
