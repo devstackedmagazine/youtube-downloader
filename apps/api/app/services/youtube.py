@@ -4,7 +4,10 @@ import re
 from typing import Any, Dict
 from urllib.parse import urlparse
 
+from app.config import get_settings
+
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 def validate_youtube_url(url: str) -> bool:
     """Perform cheap, deterministic validation before calling yt-dlp."""
@@ -33,7 +36,11 @@ def get_video_metadata(youtube_url: str) -> Dict[str, Any]:
             'quiet': True,
             'no_warnings': True,
             'skip_download': True,
-            'extract_flat': 'discard_in_playlist',
+            # Playlist metadata must stay flat. ``discard_in_playlist`` resolves
+            # every entry before discarding it, which makes metadata requests
+            # time out for even moderately sized playlists.
+            'extract_flat': 'in_playlist',
+            'playlistend': settings.MAX_PLAYLIST_ITEMS,
             'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         

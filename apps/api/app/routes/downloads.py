@@ -2,7 +2,7 @@ import asyncio
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from redis.asyncio import Redis
 
@@ -27,8 +27,29 @@ def job_key(job_id: str) -> str:
     return f"download:job:{job_id}"
 
 
+async def enforce_rate_limit(request: Request, redis: Redis = Depends(get_redis), settings=Depends(get_settings)):
+    """Bound expensive anonymous metadata and conversion requests.
+
+    Use the direct peer address instead of client-controlled forwarding headers.
+    Deployments behind a proxy should configure the proxy/server to preserve the
+    real client address before enabling proxy header handling.
+    """
+    client = request.client.host if request.client else "unknown"
+    key = f"download:rate:{client}"
+    try:
+        count = await redis.incr(key)
+        if count == 1:
+            await redis.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS)
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Rate limiting is unavailable. Please try again.") from error
+    if count > settings.RATE_LIMIT_REQUESTS:
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again shortly.")
+
+
 @router.get("/metadata")
-async def metadata(url: str):
+async def metadata(url: str, _: None = Depends(enforce_rate_limit)):
+    if len(url) > 2048:
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
     if not validate_youtube_url(url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
 
@@ -53,7 +74,7 @@ async def metadata(url: str):
 
 
 @router.post("/download", response_model=JobResponse)
-async def create_download(download_req: DownloadCreate, redis: Redis = Depends(get_redis)):
+async def create_download(download_req: DownloadCreate, redis: Redis = Depends(get_redis), _: None = Depends(enforce_rate_limit)):
     url = download_req.youtube_url
     if not validate_youtube_url(url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")

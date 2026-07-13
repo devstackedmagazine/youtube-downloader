@@ -84,6 +84,8 @@ def download_options(job_id: str, job: dict[str, str], job_dir: Path) -> dict[st
         "windowsfilenames": True,
         "progress_hooks": [report_progress],
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "socket_timeout": 30,
+        "playlistend": settings.MAX_PLAYLIST_ITEMS if is_playlist else None,
     }
     if format_value == "mp3":
         options["postprocessors"] = [{

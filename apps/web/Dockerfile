@@ -21,12 +21,12 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000
 
-COPY --from=builder --chown=node:node /app/apps/web/public ./public
+COPY --from=builder --chown=node:node /app/apps/web/public ./apps/web/public
 COPY --from=builder --chown=node:node /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=node:node /app/apps/web/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
 
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1
-CMD ["node", "server.js"]
+CMD ["node", "apps/web/server.js"]

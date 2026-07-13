@@ -11,6 +11,14 @@ services:
       timeout: 3s
       retries: 5
 
+  download-init:
+    build: ./apps/api
+    restart: "no"
+    user: root
+    command: ["chown", "-R", "app:app", "/app/tmp_downloads"]
+    volumes:
+      - downloads:/app/tmp_downloads
+
   api:
     build: ./apps/api
     restart: unless-stopped
@@ -27,6 +35,8 @@ services:
     volumes:
       - downloads:/app/tmp_downloads
     depends_on:
+      download-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -34,10 +44,14 @@ services:
     build: ./apps/api
     restart: unless-stopped
     command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+    healthcheck:
+      disable: true
     environment: *api_environment
     volumes:
       - downloads:/app/tmp_downloads
     depends_on:
+      download-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -45,6 +59,8 @@ services:
     build: ./apps/api
     restart: unless-stopped
     command: celery -A app.tasks.celery_app.celery_app beat --loglevel=info
+    healthcheck:
+      disable: true
     environment: *api_environment
     volumes:
       - downloads:/app/tmp_downloads

@@ -15,7 +15,7 @@ class DownloadScopeEnum(str, Enum):
 
 
 class DownloadCreate(BaseModel):
-    youtube_url: str = Field(..., description="YouTube video URL")
+    youtube_url: str = Field(..., min_length=5, max_length=2048, description="YouTube video URL")
     format: FormatEnum
     quality: str
     scope: DownloadScopeEnum = DownloadScopeEnum.single
