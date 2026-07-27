@@ -11,7 +11,7 @@
   "dependencies": {
     "@stripe/react-stripe-js": "^6.1.0",
     "@stripe/stripe-js": "^9.1.0",
-    "next": "16.2.3",
+    "next": "16.2.11",
     "next-seo": "^7.2.0",
     "posthog-js": "^1.367.0",
     "react": "19.2.4",
