@@ -1,60 +1,37 @@
-from pydantic import BaseModel, Field, validator
-from typing import Optional, List
-from datetime import datetime
-from uuid import UUID
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field, field_validator
+
 
 class FormatEnum(str, Enum):
     mp4 = "mp4"
     mp3 = "mp3"
 
-class QualityEnum(str, Enum):
-    # MP4 qualities
-    quality_1080p = "1080p"
-    quality_720p = "720p"
-    quality_480p = "480p"
-    quality_360p = "360p"
-    quality_240p = "240p"
-    # MP3 bitrates
-    bitrate_320 = "320kbps"
-    bitrate_256 = "256kbps"
-    bitrate_128 = "128kbps"
+
+class DownloadScopeEnum(str, Enum):
+    single = "single"
+    playlist = "playlist"
+
 
 class DownloadCreate(BaseModel):
-    youtube_url: str = Field(..., description="YouTube video URL")
+    youtube_url: str = Field(..., min_length=5, max_length=2048, description="YouTube video URL")
     format: FormatEnum
-    quality: str  # Will validate based on format
-    
-    @validator('youtube_url')
-    def validate_url(cls, v):
-        if not v or len(v) < 5:
-            raise ValueError('Invalid YouTube URL')
-        return v.strip()
-
-class DownloadResponse(BaseModel):
-    id: UUID
-    title: str
-    format: str
     quality: str
-    status: str
-    created_at: datetime
-    duration_seconds: Optional[int] = None
-    thumbnail_url: Optional[str] = None
-    download_link: Optional[str] = None
-    file_size: Optional[int] = None
-    error_message: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+    scope: DownloadScopeEnum = DownloadScopeEnum.single
 
-class DownloadStatusResponse(BaseModel):
-    id: UUID
+    @field_validator("youtube_url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        if not value or len(value.strip()) < 5:
+            raise ValueError("Invalid YouTube URL")
+        return value.strip()
+
+
+class JobResponse(BaseModel):
+    id: str
     status: str
-    progress: int  # 0-100
+    progress: int = 0
     eta_seconds: Optional[int] = None
     error_message: Optional[str] = None
     download_link: Optional[str] = None
-
-class DownloadListResponse(BaseModel):
-    downloads: List[DownloadResponse]
-    pagination: dict  # {page, limit, total, pages}

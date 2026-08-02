@@ -1,39 +1,24 @@
-"use client";
-
 import Link from "next/link";
-import { useAuth } from "@/lib/auth-context";
 
 export default function Navbar() {
-  const { currentUser, logout } = useAuth();
-
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/80 backdrop-blur">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-indigo-600">
-          <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
-          </svg>
-          DLTube
+    <header className="fixed inset-x-0 top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between rounded-full border border-white/10 bg-[#11110f]/85 px-5 text-[#f6f2e9] shadow-2xl shadow-black/10 backdrop-blur-xl sm:px-7">
+        <Link href="/" className="group flex items-center gap-3" aria-label="DLTube home">
+          <span className="brand-mark" aria-hidden="true"><span /></span>
+          <span className="font-display text-lg tracking-[-0.04em]">DLTube</span>
         </Link>
-        <nav className="hidden md:flex items-center gap-6">
-          <Link href="/#features" className="text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors">Features</Link>
-          <Link href="/download" className="text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors">Download</Link>
-          
-          {currentUser ? (
-            <>
-              <Link href="/dashboard" className="text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors">Dashboard</Link>
-              <button onClick={logout} className="text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors">Log Out</button>
-            </>
-          ) : (
-            <>
-              <Link href="/auth/login" className="text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors">Log In</Link>
-              <Link href="/auth/signup" className="inline-flex h-9 items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow transition-colors hover:bg-indigo-700">Sign Up</Link>
-            </>
-          )}
+
+        <nav className="hidden items-center gap-8 text-sm text-[#bdb9af] md:flex">
+          <Link href="/#capabilities" className="nav-link">Capabilities</Link>
+          <Link href="/#how-it-works" className="nav-link">How it works</Link>
+          <Link href="/#ethos" className="nav-link">Built differently</Link>
         </nav>
-        <div className="md:hidden">
-          <Link href="/download" className="text-sm font-medium text-indigo-600">Download</Link>
-        </div>
+
+        <Link href="/download" className="btn-paper inline-flex h-10 items-center gap-2 rounded-full px-5 text-sm font-semibold hover:-translate-y-0.5">
+          Start a download
+          <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </Link>
       </div>
     </header>
   );

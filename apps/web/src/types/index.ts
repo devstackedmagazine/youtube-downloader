@@ -1,4 +1,5 @@
 export type VideoFormat = "mp4" | "mp3";
+export type DownloadScope = "single" | "playlist";
 
 export type QualityMp4 = "1440p" | "1080p" | "720p" | "480p" | "360p";
 export type QualityMp3 = "320kbps" | "256kbps" | "128kbps";
@@ -17,6 +18,9 @@ export interface VideoMetadata {
     resolution: string;
     quality: number;
   }[];
+  is_playlist?: boolean;
+  playlist_count?: number;
+  playlist_title?: string | null;
 }
 
 export type DownloadStatus = 

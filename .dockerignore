@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+node_modules
+**/node_modules
+**/.next
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/.env.*
+tmp_downloads
+downloads
+*.log

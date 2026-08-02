@@ -1,0 +1,9 @@
+.env
+.env.*
+__pycache__
+*.py[cod]
+*.log
+tmp_downloads
+alembic
+migrations
+start_services.sh

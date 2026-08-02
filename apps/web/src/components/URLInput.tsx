@@ -3,66 +3,17 @@
 import { useForm } from "react-hook-form";
 import { DownloadStatus } from "@/types";
 
-interface URLInputProps {
-  onSubmit: (url: string) => void;
-  status: DownloadStatus;
-  errorMessage?: string;
-}
-
-interface FormData {
-  youtubeUrl: string;
-}
+interface URLInputProps { onSubmit: (url: string) => void; status: DownloadStatus; errorMessage?: string; }
+interface FormData { youtubeUrl: string; }
 
 export default function URLInput({ onSubmit, status, errorMessage }: URLInputProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
   const isFetching = status === "fetching";
-
-  const onFormSubmit = (data: FormData) => {
-    onSubmit(data.youtubeUrl);
-  };
-
   return (
-    <div className="w-full max-w-3xl mx-auto bg-white p-6 md:p-8 rounded-xl shadow-sm border border-gray-200">
-      <form onSubmit={handleSubmit(onFormSubmit)} className="flex flex-col gap-4">
-        <label htmlFor="youtubeUrl" className="text-lg font-semibold text-gray-900">
-          Enter YouTube Video URL
-        </label>
-        <div className="flex flex-col md:flex-row gap-3">
-          <input
-            id="youtubeUrl"
-            type="url"
-            disabled={isFetching}
-            placeholder="https://www.youtube.com/watch?v=..."
-            className="flex-1 px-4 py-3 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors disabled:opacity-50"
-            {...register("youtubeUrl", { 
-              required: "Please enter a valid YouTube URL",
-              pattern: {
-                value: /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/,
-                message: "Must be a valid YouTube URL"
-              }
-            })}
-          />
-          <button
-            type="submit"
-            disabled={isFetching}
-            className="md:w-auto w-full px-8 py-3 bg-indigo-600 text-white font-bold rounded-md hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            {isFetching ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Fetching...
-              </>
-            ) : "Load Video"}
-          </button>
-        </div>
-        {(errors.youtubeUrl || errorMessage) && (
-          <p className="text-red-500 text-sm font-medium">
-            {errors.youtubeUrl?.message || errorMessage}
-          </p>
-        )}
+    <div className="input-shell surface-hover surface-hover--light rounded-[1.75rem] border border-white/15 bg-[#f6f2e9] p-2 text-[#11110f] transition duration-300 sm:p-3">
+      <form onSubmit={handleSubmit((data) => onSubmit(data.youtubeUrl))}>
+        <div className="flex flex-col gap-2 sm:flex-row"><label htmlFor="youtubeUrl" className="sr-only">YouTube URL</label><input id="youtubeUrl" type="url" disabled={isFetching} placeholder="https://youtube.com/watch?v=..." className="min-h-14 min-w-0 flex-1 bg-transparent px-4 text-base outline-none placeholder:text-[#8f8a80] disabled:opacity-50 sm:min-h-16 sm:px-5" {...register("youtubeUrl", { required: "Paste a YouTube link to continue", pattern: { value: /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/, message: "That does not look like a YouTube link" } })} /><button type="submit" disabled={isFetching} className="btn-signal inline-flex min-h-14 items-center justify-center rounded-full px-7 font-semibold disabled:cursor-wait disabled:opacity-60 sm:min-h-16">{isFetching ? "Reading link..." : "Load video"}<span className="ml-3 text-lg">↗</span></button></div>
+        {(errors.youtubeUrl || errorMessage) && <p className="px-4 pb-2 pt-2 text-sm font-medium text-[#c33f1a]">{errors.youtubeUrl?.message || errorMessage}</p>}
       </form>
     </div>
   );

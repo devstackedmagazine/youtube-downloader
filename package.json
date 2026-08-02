@@ -11,5 +11,11 @@
     "dev": "npm run dev --workspaces",
     "build": "npm run build --workspaces",
     "start": "npm run start --workspaces"
+  },
+  "overrides": {
+    "postcss": "8.5.18",
+    "next": {
+      "postcss": "8.5.18"
+    }
   }
 }

@@ -1,149 +1,63 @@
 import Link from "next/link";
-import { Metadata } from "next";
-import AdPlaceholder from "@/components/AdPlaceholder";
+import MotionShowcase from "@/components/MotionShowcase";
 
-export const metadata: Metadata = {
-  title: "Free YouTube Video Downloader - Download Videos as MP4 or MP3",
-  description: "Download YouTube videos instantly as MP4 or MP3. No watermarks, no limits, 100% free.",
-};
+const capabilities = [
+  { title: "MP4 video", detail: "1440p to 360p", tone: "bg-[#d9e7df]" },
+  { title: "MP3 audio", detail: "320kbps to 128kbps", tone: "bg-[#f2d2c2]" },
+  { title: "No account", detail: "Open, paste, done.", tone: "bg-[#ded8ed]" },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col items-center justify-center">
-      {/* Hero Section */}
-      <section className="w-full bg-gradient-to-b from-indigo-50 to-white py-20 lg:py-32">
-        <div className="container mx-auto px-4 md:px-6 text-center">
-          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 mb-6">
-            Download YouTube Videos <br className="hidden md:block"/>
-            <span className="text-indigo-600">Fast & Free</span>
-          </h1>
-          <p className="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto mb-10">
-            Convert and download your favorite YouTube videos as high-quality MP4 or MP3.
-            No software installation required, no limits, and absolutely free.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4 mb-10">
-            <Link 
-              href="/download" 
-              className="inline-flex h-12 items-center justify-center rounded-md bg-indigo-600 px-8 text-base font-medium text-white shadow transition-colors hover:bg-indigo-700"
-            >
-              Start Downloading Now
-            </Link>
-            <Link 
-              href="#features" 
-              className="inline-flex h-12 items-center justify-center rounded-md border border-gray-300 bg-white px-8 text-base font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-            >
-              Learn More
-            </Link>
+    <main className="w-full max-w-full overflow-x-hidden bg-[#f6f2e9]">
+      <section className="grain relative isolate min-h-[820px] overflow-hidden bg-[#11110f] px-6 pb-20 pt-36 text-[#f6f2e9] sm:px-10 lg:min-h-[900px] lg:px-16 lg:pt-48">
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_75%_35%,rgba(255,107,53,.38),transparent_30%),radial-gradient(circle_at_20%_80%,rgba(120,151,190,.24),transparent_32%)]" />
+        <div className="hero-orb absolute -right-24 top-44 -z-10 h-80 w-80 rounded-full border border-[#ff6b35]/30 bg-[#ff6b35]/10 blur-[1px] lg:h-[34rem] lg:w-[34rem]" />
+        <div className="mx-auto grid max-w-7xl items-end gap-16 lg:grid-cols-[1fr_340px]">
+          <div>
+            <p className="mb-8 max-w-sm text-sm leading-relaxed text-[#bdb9af]">A cleaner way to keep the moments you find online.</p>
+            <h1 className="font-display max-w-6xl text-balance text-[clamp(3rem,6vw,6.75rem)] leading-[.9] tracking-[-.08em]">
+              Take the good stuff <span className="inline-block h-[.58em] w-[1.4em] align-[.03em] rounded-full bg-[url('https://picsum.photos/seed/analog-film/800/500')] bg-cover bg-center grayscale transition duration-700 hover:grayscale-0" aria-label="Analog film texture" /> with you.
+            </h1>
+            <p className="mt-10 max-w-xl text-lg leading-relaxed text-[#bdb9af] sm:text-xl">DLTube turns a YouTube link into a crisp MP4 or clean MP3 in a few clicks. No software. No account. Just the file.</p>
+            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+              <Link href="/download" className="btn-signal inline-flex h-14 items-center justify-center rounded-full px-7 font-semibold hover:-translate-y-1">Paste a link <span className="ml-3 text-lg">↗</span></Link>
+              <Link href="#capabilities" className="btn-outline inline-flex h-14 items-center justify-center rounded-full border px-7 font-semibold">See what it does</Link>
+            </div>
           </div>
-          
-          <div className="max-w-3xl mx-auto mt-12">
-            <AdPlaceholder className="h-32" />
+          <div className="relative hidden h-80 lg:block">
+            <div className="surface-hover surface-hover--dark absolute right-0 top-0 w-64 rotate-6 overflow-hidden rounded-[2rem] border border-white/20 bg-[#2c2b27] p-3 shadow-2xl shadow-black/30">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="https://picsum.photos/seed/night-drive/640/860" alt="Night drive still" className="h-64 w-full rounded-[1.35rem] object-cover grayscale contrast-125 transition duration-700 hover:scale-105 hover:grayscale-0" />
+              <p className="px-2 pb-2 pt-3 font-display text-sm text-[#d8d3c8]">Keep the atmosphere.</p>
+            </div>
+            <div className="cursor-ring absolute bottom-4 left-0 flex h-28 w-28 -rotate-12 items-center justify-center rounded-full bg-[#f6f2e9] text-center text-xs font-bold uppercase tracking-[.16em] text-[#11110f]">play<br />back<br />later</div>
           </div>
+        </div>
+        <div className="mx-auto mt-20 flex max-w-7xl items-center justify-between border-t border-white/15 pt-5 text-xs uppercase tracking-[.18em] text-[#8b887f]"><span>Video / audio / yours</span><span>Scroll to explore</span></div>
+      </section>
+
+      <section id="capabilities" className="px-6 py-32 sm:px-10 md:py-48 lg:px-16">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-16 max-w-2xl"><p className="mb-6 text-sm font-semibold uppercase tracking-[.2em] text-[#ff6b35]">Made for the handoff</p><h2 className="font-display text-balance text-5xl leading-[.94] tracking-[-.07em] sm:text-7xl">Everything you need. Nothing that gets in the way.</h2></div>
+          <div className="grid grid-flow-dense grid-cols-12 grid-rows-2 gap-3">
+            <div className="surface-hover surface-hover--dark group relative col-span-12 min-h-[420px] overflow-hidden rounded-[2rem] bg-[#11110f] p-7 text-[#f6f2e9] sm:col-span-8 sm:row-span-2 sm:p-10">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(255,107,53,.35),transparent_35%),linear-gradient(135deg,#11110f,#2a2925)]" />
+              <div className="relative flex h-full flex-col justify-between"><div><p className="max-w-sm text-sm leading-relaxed text-[#bdb9af]">One link can become a watchable file, a listening file, or both. Choose the shape that fits the moment.</p><h3 className="mt-20 font-display text-6xl leading-[.9] tracking-[-.07em] sm:text-8xl">Your format.<br /><span className="text-[#ff6b35]">Your rules.</span></h3></div><div className="flex items-end justify-between"><span className="font-display text-5xl tracking-[-.07em]">04K</span><span className="max-w-[11rem] text-right text-sm text-[#bdb9af]">Sharp enough for the big screen. Light enough for the commute.</span></div></div>
+            </div>
+            {capabilities.slice(0, 2).map((item) => <div key={item.title} className={`surface-hover group relative col-span-12 min-h-[204px] overflow-hidden rounded-[2rem] p-7 sm:col-span-4 ${item.tone}`}><div className="flex h-full flex-col justify-between"><span className="font-display text-4xl tracking-[-.06em]">{item.title}</span><div className="flex items-end justify-between"><span className="text-sm text-[#59564f]">{item.detail}</span><span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#11110f] text-[#f6f2e9] transition duration-300 group-hover:rotate-45">↗</span></div></div></div>)}
+          </div>
+          <div className="marquee-viewport mt-3 rounded-full bg-[#11110f] py-4 text-[#f6f2e9]"><div className="marquee-track font-display text-xl tracking-[-.03em]"><div className="marquee-group"><span>Paste. Pick. Keep.</span><span className="text-[#ff6b35]">✳</span><span>MP4 / MP3</span><span className="text-[#ff6b35]">✳</span><span>No account required</span><span className="text-[#ff6b35]">✳</span></div><div aria-hidden="true" className="marquee-group"><span>Paste. Pick. Keep.</span><span className="text-[#ff6b35]">✳</span><span>MP4 / MP3</span><span className="text-[#ff6b35]">✳</span><span>No account required</span><span className="text-[#ff6b35]">✳</span></div></div></div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="w-full py-20 bg-white">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Why Choose DLTube?</h2>
-            <p className="text-lg text-gray-600">Built for speed, convenience, and quality.</p>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <FeatureCard 
-              title="High Quality MP4"
-              description="Download videos in up to 4K resolution with clear audio and crisp visuals."
-              icon={<svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>}
-            />
-            <FeatureCard 
-              title="Crystal Clear MP3"
-              description="Extract audio in 320kbps MP3 format for the ultimate listening experience."
-              icon={<svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>}
-            />
-            <FeatureCard 
-              title="Lightning Fast"
-              description="Our optimized servers ensure your conversions finish in seconds, not minutes."
-              icon={<svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>}
-            />
-            <FeatureCard 
-              title="100% Free & Safe"
-              description="No sketchy software, no hidden fees, and entirely free of malicious ads."
-              icon={<svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>}
-            />
-          </div>
-        </div>
+      <MotionShowcase />
+
+      <section id="how-it-works" className="surface-grid relative overflow-hidden bg-[#d9e7df] px-6 py-32 sm:px-10 md:py-48 lg:px-16">
+        <div className="relative mx-auto grid max-w-7xl gap-16 lg:grid-cols-[.8fr_1.2fr] lg:items-end"><div><p className="mb-6 text-sm font-semibold uppercase tracking-[.2em] text-[#4b6a59]">A shorter route</p><h2 className="font-display max-w-xl text-6xl leading-[.9] tracking-[-.08em] sm:text-8xl">From link to file in three moves.</h2></div><div className="grid gap-3 sm:grid-cols-3">{[{ n: "01", t: "Copy", d: "Grab a YouTube URL." }, { n: "02", t: "Choose", d: "Pick video or audio." }, { n: "03", t: "Keep", d: "Download your file." }].map((step) => <div key={step.n} className="surface-hover surface-hover--light group min-h-56 rounded-[1.5rem] border border-[#11110f]/15 bg-[#f6f2e9]/55 p-6 transition duration-500 hover:bg-[#f6f2e9]"><span className="font-display text-3xl text-[#4b6a59]">{step.n}</span><h3 className="mt-16 font-display text-3xl tracking-[-.05em]">{step.t}</h3><p className="mt-2 text-sm leading-relaxed text-[#59564f]">{step.d}</p></div>)}</div></div>
       </section>
 
-      {/* How it works Section */}
-      <section className="w-full py-20 bg-gray-50 border-y border-gray-200">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">How It Works</h2>
-            <p className="text-lg text-gray-600">3 simple steps to download any video.</p>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
-            <div className="hidden md:block absolute top-[28px] left-[15%] right-[15%] h-0.5 bg-gray-200 z-0"></div>
-            
-            <StepCard 
-              number="1"
-              title="Copy the URL"
-              description="Find the video you want on YouTube and copy its URL from your browser's address bar."
-            />
-            <StepCard 
-              number="2"
-              title="Paste & Select Format"
-              description="Paste the link on our download page and choose whether you want MP4 video or MP3 audio."
-            />
-            <StepCard 
-              number="3"
-              title="Download & Enjoy"
-              description="Click convert, wait a few seconds, and download your file directly to your device."
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="w-full py-24 bg-indigo-600 text-white text-center">
-        <div className="container mx-auto px-4 md:px-6">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to start downloading?</h2>
-          <p className="text-xl text-indigo-100 max-w-2xl mx-auto mb-10">
-            Join thousands of users who trust DLTube for their daily video needs.
-          </p>
-          <Link 
-            href="/download" 
-            className="inline-flex h-14 items-center justify-center rounded-md bg-white px-8 text-lg font-bold text-indigo-600 shadow-md transition-transform hover:scale-105"
-          >
-            Go to Download Page
-          </Link>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function FeatureCard({ title, description, icon }: { title: string, description: string, icon: React.ReactNode }) {
-  return (
-    <div className="flex flex-col items-center text-center p-6 bg-gray-50 rounded-xl border border-gray-100">
-      <div className="p-3 bg-white rounded-full shadow-sm mb-4">
-        {icon}
-      </div>
-      <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
-      <p className="text-gray-600">{description}</p>
-    </div>
-  );
-}
-
-function StepCard({ number, title, description }: { number: string, title: string, description: string }) {
-  return (
-    <div className="flex flex-col items-center text-center relative z-10">
-      <div className="w-14 h-14 rounded-full bg-indigo-600 text-white flex items-center justify-center text-2xl font-bold mb-6 shadow-lg">
-        {number}
-      </div>
-      <h3 className="text-xl font-bold text-gray-900 mb-3">{title}</h3>
-      <p className="text-gray-600">{description}</p>
-    </div>
+      <section id="ethos" className="bg-[#ff6b35] px-6 py-32 sm:px-10 md:py-48 lg:px-16"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-14 lg:flex-row lg:items-end"><div><p className="mb-6 text-sm font-semibold uppercase tracking-[.2em] text-[#11110f]/60">The good kind of simple</p><h2 className="font-display max-w-4xl text-balance text-6xl leading-[.88] tracking-[-.08em] sm:text-8xl">The download button you wish every site had.</h2></div><div className="max-w-xs"><p className="text-base leading-relaxed text-[#11110f]/75">Built for personal, permitted use. Keep the videos, mixes, and references that matter to you close by.</p><Link href="/download" className="btn-ink mt-8 inline-flex h-14 items-center justify-center rounded-full px-7 font-semibold hover:-translate-y-1">Download something <span className="ml-3">↗</span></Link></div></div></section>
+    </main>
   );
 }

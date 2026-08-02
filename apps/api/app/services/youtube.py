@@ -1,39 +1,23 @@
 import yt_dlp
 import logging
 import re
-from typing import Dict, Optional
+from typing import Any, Dict
+from urllib.parse import urlparse
+
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 def validate_youtube_url(url: str) -> bool:
-    """
-    Validate if URL is a valid YouTube video.
-    
-    Accepts:
-    - https://www.youtube.com/watch?v=dQw4w9WgXcQ
-    - https://youtu.be/dQw4w9WgXcQ
-    - youtube.com/watch?v=...
-    - youtu.be/...
-    """
-    youtube_regex = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/'
-    
-    if not re.search(youtube_regex, url):
-        logger.warning(f"URL failed regex check: {url}")
-        return False
-    
-    try:
-        with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            video_id = info.get('id')
-            if not video_id:
-                return False
-            logger.info(f"URL validated: {video_id}")
-            return True
-    except Exception as e:
-        logger.error(f"yt-dlp validation error: {str(e)}")
-        return False
+    """Perform cheap, deterministic validation before calling yt-dlp."""
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    host = (parsed.hostname or "").lower()
+    return parsed.scheme in {"http", "https"} and (
+        host == "youtu.be" or host == "youtube.com" or host.endswith(".youtube.com")
+    )
 
-def get_video_metadata(youtube_url: str) -> Dict:
+def get_video_metadata(youtube_url: str) -> Dict[str, Any]:
     """
     Fetch complete video metadata from YouTube.
     
@@ -51,20 +35,29 @@ def get_video_metadata(youtube_url: str) -> Dict:
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            'skip_unavailable_fragments': True,
+            'skip_download': True,
+            # Playlist metadata must stay flat. ``discard_in_playlist`` resolves
+            # every entry before discarding it, which makes metadata requests
+            # time out for even moderately sized playlists.
+            'extract_flat': 'in_playlist',
+            'playlistend': settings.MAX_PLAYLIST_ITEMS,
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
             
-            # Extract best available formats
+            is_playlist = info.get('_type') == 'playlist' or bool(info.get('entries'))
+            # Formats only apply to a single video. A playlist is downloaded with
+            # the same selected format for every item and returned as a ZIP.
             formats = []
-            if info.get('formats'):
+            if not is_playlist and info.get('formats'):
                 for fmt in info['formats']:
                     if fmt.get('ext') in ['mp4', 'm4a']:
                         formats.append({
                             'format_id': fmt.get('format_id'),
-                            'height': fmt.get('height'),
+                        'resolution': f"{fmt.get('height')}p" if fmt.get('height') else "audio",
+                        'quality': fmt.get('height') or fmt.get('abr') or 0,
                             'ext': fmt.get('ext'),
                             'filesize': fmt.get('filesize')
                         })
@@ -75,7 +68,10 @@ def get_video_metadata(youtube_url: str) -> Dict:
                 'duration': info.get('duration', 0),
                 'thumbnail_url': info.get('thumbnail'),
                 'channel': info.get('uploader', 'Unknown Channel'),
-                'formats': formats
+                'formats': formats,
+                'is_playlist': is_playlist,
+                'playlist_count': info.get('playlist_count') or (len(info.get('entries') or []) if is_playlist else 0),
+                'playlist_title': info.get('title') if is_playlist else None,
             }
             
             logger.info(f"Metadata fetched: {metadata['id']} - {metadata['title']}")
@@ -84,22 +80,3 @@ def get_video_metadata(youtube_url: str) -> Dict:
     except Exception as e:
         logger.error(f"Failed to get video metadata: {str(e)}")
         raise ValueError(f"Could not fetch video information: {str(e)}")
-
-def get_video_format_url(youtube_url: str, format_id: str = 'best') -> str:
-    """
-    Get the best format URL for downloading.
-    """
-    try:
-        ydl_opts = {
-            'quiet': True,
-            'format': format_id,
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
-            return info.get('url')
-    
-    except Exception as e:
-        logger.error(f"Failed to get download URL: {str(e)}")
-        raise ValueError(f"Could not get download URL: {str(e)}")
-
