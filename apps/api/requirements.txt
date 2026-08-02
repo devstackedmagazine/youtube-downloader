@@ -4,7 +4,7 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 yt-dlp==2026.7.4
 ffmpeg-python==0.2.0
-requests==2.31.0
+requests==2.33.0
 celery==5.3.4
 redis==5.0.1
 sendgrid==6.11.0
