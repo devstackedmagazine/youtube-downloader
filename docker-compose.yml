@@ -24,7 +24,8 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    environment: &api_environment
+    # start.sh runs uvicorn plus the Celery worker with embedded beat, as in production.
+    environment:
       ENVIRONMENT: production
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
@@ -37,34 +38,6 @@ services:
     depends_on:
       download-init:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-
-  worker:
-    build: ./apps/api
-    restart: unless-stopped
-    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
-    healthcheck:
-      disable: true
-    environment: *api_environment
-    volumes:
-      - downloads:/app/tmp_downloads
-    depends_on:
-      download-init:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-
-  beat:
-    build: ./apps/api
-    restart: unless-stopped
-    command: celery -A app.tasks.celery_app.celery_app beat --loglevel=info
-    healthcheck:
-      disable: true
-    environment: *api_environment
-    volumes:
-      - downloads:/app/tmp_downloads
-    depends_on:
       redis:
         condition: service_healthy
 

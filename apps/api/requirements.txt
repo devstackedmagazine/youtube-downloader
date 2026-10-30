@@ -1,12 +1,10 @@
-fastapi==0.104.1
-uvicorn==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-yt-dlp==2026.7.4
-ffmpeg-python==0.2.0
-requests==2.31.0
-celery==5.3.4
-redis==5.0.1
-sendgrid==6.11.0
-stripe==7.4.0
-python-dotenv==1.2.2
+# Runtime dependencies of the API + Celery worker image. Test-only deps: requirements-dev.txt
+fastapi==0.162.0
+uvicorn==0.54.0
+pydantic==2.14.2
+pydantic-settings==2.16.2
+celery==5.6.3
+redis==5.3.1
+# "default" pulls yt-dlp-ejs/requests/certifi etc.; "deno" installs the Deno JS runtime
+# that yt-dlp needs for full YouTube support. Update often: YouTube breaks old releases.
+yt-dlp[default,deno]==2026.10.26
