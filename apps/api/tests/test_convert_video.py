@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.tasks.convert_video import clip_options, download_options, make_match_filter, output_filename, settings
+from app.tasks.convert_video import clip_length, clip_options, download_options, make_match_filter, output_filename, settings
 
 
 def options_for(job):
@@ -21,7 +21,7 @@ class DownloadOptionsTests(unittest.TestCase):
     def test_single_download_remains_single_item(self):
         options = options_for({})
         self.assertTrue(options["noplaylist"])
-        self.assertNotIn("playlistend", options)
+        self.assertEqual(options["playlistend"], 1)
         self.assertTrue(options["outtmpl"].endswith("media.%(ext)s"))
 
     def test_only_youtube_extractors_allowed(self):
@@ -97,17 +97,36 @@ class FilenameTests(unittest.TestCase):
 
 
 class MatchFilterTests(unittest.TestCase):
+    MAX = settings.MAX_DURATION_SECONDS
+
     def test_rejects_live(self):
-        self.assertIsNotNone(make_match_filter(False)({"live_status": "is_live"}))
+        self.assertIsNotNone(make_match_filter(None, None)({"live_status": "is_live"}))
 
     def test_rejects_too_long_full_video(self):
-        self.assertIsNotNone(make_match_filter(False)({"duration": settings.MAX_DURATION_SECONDS + 1}))
+        self.assertIsNotNone(make_match_filter(None, None)({"duration": self.MAX + 1}))
 
-    def test_clip_of_long_video_allowed(self):
-        self.assertIsNone(make_match_filter(True)({"duration": settings.MAX_DURATION_SECONDS + 1}))
+    def test_short_clip_of_long_video_allowed(self):
+        self.assertIsNone(make_match_filter(10, 70)({"duration": self.MAX * 10}))
 
-    def test_normal_video_allowed(self):
-        self.assertIsNone(make_match_filter(False)({"duration": 19}))
+    def test_long_clip_rejected(self):
+        self.assertIsNotNone(make_match_filter(0, self.MAX + 5)({"duration": self.MAX * 10}))
+        self.assertIsNotNone(make_match_filter(5, None)({"duration": self.MAX * 10}))
+
+    def test_unknown_duration_rejected_unless_incomplete(self):
+        self.assertIsNotNone(make_match_filter(None, None)({"id": "x"}))
+        self.assertIsNone(make_match_filter(None, None)({"id": "x"}, incomplete=True))
+
+    def test_playlist_container_passes_and_normal_video_allowed(self):
+        self.assertIsNone(make_match_filter(None, None)({"_type": "playlist"}))
+        self.assertIsNone(make_match_filter(None, None)({"duration": 19}))
+
+
+class ClipLengthTests(unittest.TestCase):
+    def test_clip_length(self):
+        self.assertEqual(clip_length(None, None, 19), 19)
+        self.assertEqual(clip_length(5, 12, 19), 7)
+        self.assertEqual(clip_length(5, 25, 19), 14)
+        self.assertEqual(clip_length(19, None, 19), 0)
 
 
 if __name__ == "__main__":

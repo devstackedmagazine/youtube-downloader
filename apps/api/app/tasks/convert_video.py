@@ -92,14 +92,25 @@ def output_filename(title: str, extension: str, start: float | None, end: float 
     return f"{name}.{extension}"
 
 
-def make_match_filter(is_clip: bool):
-    """Skip live streams and over-long videos (playlist items aren't pre-checked by the API)."""
+def clip_length(start: float | None, end: float | None, duration: float) -> float:
+    """Seconds actually processed for a video of ``duration`` (end is clamped to it)."""
+    stop = duration if end is None else min(end, duration)
+    return max(0.0, stop - (start or 0))
+
+
+def make_match_filter(start: float | None, end: float | None):
+    """Last line of defence for the length limit (playlist items aren't pre-checked by the API)."""
     def reject(info: dict[str, Any], *, incomplete: bool = False) -> str | None:
+        if info.get("_type") == "playlist":
+            return None  # entries are checked individually
         if is_live(info):
             return "Live streams are not supported"
         duration = info.get("duration")
-        if not is_clip and duration and duration > settings.MAX_DURATION_SECONDS:
-            return f"Video is longer than {settings.MAX_DURATION_SECONDS} seconds"
+        if not duration:
+            # Flat playlist entries may lack it; the full entry is checked again later.
+            return None if incomplete else "Video length is unknown"
+        if clip_length(start, end, duration) > settings.MAX_DURATION_SECONDS:
+            return f"Longer than the {settings.MAX_DURATION_SECONDS}-second limit"
         return None
     return reject
 
@@ -142,8 +153,9 @@ def download_options(job_id: str, job: dict[str, str], job_dir: Path) -> dict[st
         "restrictfilenames": True,
         "windowsfilenames": True,
         "progress_hooks": [report_progress],
-        "match_filter": make_match_filter(is_clip),
-        "playlistend": settings.MAX_PLAYLIST_ITEMS if is_playlist else None,
+        "match_filter": make_match_filter(start, end),
+        # noplaylist doesn't stop a pure playlist URL; cap single jobs at one item.
+        "playlistend": settings.MAX_PLAYLIST_ITEMS if is_playlist else 1,
         **clip_options(start, end),
     }
     if format_value == "mp3":

@@ -11,7 +11,7 @@ from redis.asyncio import Redis
 from app.config import Settings, get_settings
 from app.schemas.download import MIN_CLIP_SECONDS, DownloadCreate, DownloadScopeEnum, JobResponse
 from app.services.youtube import get_video_metadata, validate_youtube_url
-from app.tasks.convert_video import convert_video_task
+from app.tasks.convert_video import clip_length, convert_video_task
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -77,17 +77,20 @@ def check_against_video(req: DownloadCreate, info: dict[str, Any], max_duration:
     """Rules that need the video's metadata. Returns an error message or None."""
     if info.get("is_live"):
         return "Live streams can't be downloaded. Try again after the stream has ended."
+    if info.get("is_playlist"):
+        return "This link is a playlist. Choose \"Whole playlist\" to download it."
     duration = info.get("duration") or 0
+    if not duration:
+        # Fail closed: without a duration the length limit can't be enforced.
+        return "Couldn't determine the length of this video, so it can't be downloaded."
     if req.is_clip and duration:
         if req.end_time is not None and req.end_time > duration + DURATION_TOLERANCE_SECONDS:
             return f"End time is past the end of the video ({format_clock(duration)})."
         if req.start_time is not None and req.start_time >= duration:
             return f"Start time is past the end of the video ({format_clock(duration)})."
-    start = req.start_time or 0
-    end = min(req.end_time, duration) if req.end_time is not None and duration else (req.end_time or duration)
-    if req.is_clip and end and end - start < MIN_CLIP_SECONDS:
+    length = clip_length(req.start_time, req.end_time, duration)
+    if req.is_clip and length < MIN_CLIP_SECONDS:
         return f"The section must be at least {MIN_CLIP_SECONDS} second long."
-    length = end - start if end else 0
     if length > max_duration:
         what = "section" if req.is_clip else "video"
         return f"This {what} is {format_clock(length)} long; the limit is {format_clock(max_duration)}. Choose a shorter section."

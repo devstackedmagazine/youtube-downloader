@@ -159,6 +159,20 @@ def test_live_stream_rejected(client, yt):
     assert "Live" in response.json()["detail"]
 
 
+def test_single_scope_playlist_result_rejected(client, yt):
+    yt[0].return_value = {**VIDEO, "is_playlist": True, "duration": 0}
+    response = post(client, youtube_url="https://www.youtube.com/playlist?list=PL1")
+    assert response.status_code == 422
+    assert "playlist" in response.json()["detail"]
+
+
+def test_unknown_duration_fails_closed(client, yt):
+    yt[0].return_value = {**VIDEO, "duration": 0}
+    response = post(client, start_time=0, end_time=10)
+    assert response.status_code == 422
+    assert "length" in response.json()["detail"]
+
+
 def test_max_duration_applies_to_clip_length_not_video(client, yt):
     yt[0].return_value = {**VIDEO, "duration": 3600}
     full = post(client)
