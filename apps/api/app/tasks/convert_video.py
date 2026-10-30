@@ -14,6 +14,7 @@ from yt_dlp.utils import download_range_func, sanitize_filename
 from app.config import get_settings
 from app.services.youtube import base_ydl_options, is_live
 from app.tasks.celery_app import celery_app
+from app.tasks.cleanup import remove_expired_downloads
 
 logger = logging.getLogger(__name__)
 JOB_TTL_SECONDS = 24 * 60 * 60
@@ -73,6 +74,9 @@ def clip_options(start: float | None, end: float | None) -> dict[str, Any]:
         "download_ranges": download_range_func(None, [(start or 0, float("inf") if end is None else end)]),
         # Re-encode around the cut points so the clip starts/ends exactly, not on the nearest keyframe.
         "force_keyframes_at_cuts": True,
+        # That re-encode uses libx264 defaults (preset medium, one thread per host core), which
+        # got the 256 MB container OOM-killed. One thread is all 0.1 vCPU offers anyway.
+        "external_downloader_args": {"ffmpeg_o": ["-threads", "1", "-preset", "veryfast"]},
     }
 
 
@@ -152,6 +156,7 @@ def download_options(job_id: str, job: dict[str, str], job_dir: Path) -> dict[st
         "ignoreerrors": "only_download" if is_playlist else False,
         "restrictfilenames": True,
         "windowsfilenames": True,
+        "noprogress": True,
         "progress_hooks": [report_progress],
         "match_filter": make_match_filter(start, end),
         # noplaylist doesn't stop a pure playlist URL; cap single jobs at one item.
@@ -175,6 +180,9 @@ def convert_video_task(self, job_id: str) -> None:
 
     job_dir = Path(settings.DOWNLOAD_DIR).resolve() / job_id
     try:
+        # Instead of a separate beat process (no memory for it in 256 MB): files only
+        # appear when jobs run, so cleaning up before each job keeps the disk bounded.
+        remove_expired_downloads()
         job_dir.mkdir(parents=True, exist_ok=True)
         update_job(job_id, status="processing", progress=5, error_message="")
 

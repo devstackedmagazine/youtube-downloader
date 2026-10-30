@@ -27,6 +27,9 @@ class DownloadOptionsTests(unittest.TestCase):
     def test_only_youtube_extractors_allowed(self):
         self.assertEqual(options_for({})["allowed_extractors"], ["youtube", "youtube:.*"])
 
+    def test_downloads_keep_player_js(self):
+        self.assertNotIn("player_skip", options_for({}).get("extractor_args", {}).get("youtube", {}))
+
     def test_full_download_has_no_ranges(self):
         options = options_for({"start_time": "", "end_time": ""})
         self.assertNotIn("download_ranges", options)

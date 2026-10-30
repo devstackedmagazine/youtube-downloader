@@ -41,5 +41,5 @@ docker compose up --build -d
 ## Operational notes
 
 - Keep Redis private; the compose configuration intentionally does not publish its port.
-- Download files remain available for up to 24 hours. The included Celery Beat service removes expired job files hourly.
+- Download files remain available for up to 24 hours. The worker removes expired job files before each new job.
 - Only download content you are authorized to save and distribute.

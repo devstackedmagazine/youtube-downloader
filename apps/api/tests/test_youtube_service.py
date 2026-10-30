@@ -66,6 +66,7 @@ class GetVideoMetadataTests(unittest.TestCase):
         options = youtube_dl.call_args.args[0]
         self.assertTrue(options["noplaylist"])
         self.assertEqual(options["allowed_extractors"], ["youtube", "youtube:.*"])
+        self.assertEqual(options["extractor_args"]["youtube"]["player_skip"], ["js"])
         self.assertTrue(metadata["is_live"])
 
     @patch("app.services.youtube.yt_dlp.YoutubeDL")

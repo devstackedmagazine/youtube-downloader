@@ -25,15 +25,22 @@ def validate_youtube_url(url: str) -> bool:
     )
 
 
-def base_ydl_options() -> Dict[str, Any]:
+def base_ydl_options(skip_player_js: bool = False) -> Dict[str, Any]:
+    youtube_args: Dict[str, list[str]] = {}
+    if settings.yt_player_clients:
+        youtube_args["player_client"] = settings.yt_player_clients
+    if skip_player_js:
+        # Title/duration/live status don't need deciphered format URLs, so skip the
+        # player JS and its Deno challenge solver (~215 MB RSS; see AGENT_REPORT.md).
+        youtube_args["player_skip"] = ["js"]
     options: Dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
         "allowed_extractors": ALLOWED_EXTRACTORS,
         "socket_timeout": 30,
     }
-    if settings.yt_player_clients:
-        options["extractor_args"] = {"youtube": {"player_client": settings.yt_player_clients}}
+    if youtube_args:
+        options["extractor_args"] = {"youtube": youtube_args}
     return options
 
 
@@ -48,7 +55,7 @@ def get_video_metadata(youtube_url: str, single: bool = False) -> Dict[str, Any]
     """
     try:
         ydl_opts = {
-            **base_ydl_options(),
+            **base_ydl_options(skip_player_js=True),
             "skip_download": True,
             "noplaylist": single,
             # Playlist metadata must stay flat. ``discard_in_playlist`` resolves

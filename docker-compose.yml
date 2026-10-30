@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    # start.sh runs uvicorn plus the Celery worker with embedded beat, as in production.
+    # start.sh runs uvicorn plus the Celery worker, as in production.
     environment:
       ENVIRONMENT: production
       REDIS_URL: redis://redis:6379/0

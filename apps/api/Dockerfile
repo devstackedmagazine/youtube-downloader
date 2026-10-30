@@ -20,6 +20,12 @@ RUN addgroup --system app && adduser --system --ingroup app --home /home/app app
 
 COPY . .
 
+# yt-dlp's YouTube challenge solver (Deno) needs ~215 MB RSS, more than a 256 MB
+# container has left. Cap the heap so it fails fast (yt-dlp then falls back to
+# formats that need no solving) instead of the kernel OOM-killing another process.
+# Raise or clear this when the container has >= 512 MB.
+ENV DENO_V8_FLAGS=--max-old-space-size=64
+
 USER app
 EXPOSE 8000
 

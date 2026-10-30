@@ -29,12 +29,8 @@ celery_app.conf.update(
     # An idle worker issues one BRPOP per polling interval (kombu default: 1s,
     # ~86k commands/day). A blocking BRPOP still returns as soon as a job arrives.
     broker_transport_options={"polling_interval": 30},
+    # No beat_schedule: expired files are removed at the start of each job
+    # (app.tasks.convert_video), which avoids a separate beat process.
     broker_use_ssl=redis_ssl_options(settings.celery_broker_url),
     redis_backend_use_ssl=redis_ssl_options(settings.celery_result_backend),
-    beat_schedule={
-        "remove-expired-download-files": {
-            "task": "app.tasks.cleanup.remove_expired_downloads",
-            "schedule": 3600.0,
-        },
-    },
 )
