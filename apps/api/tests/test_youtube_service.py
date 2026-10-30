@@ -46,6 +46,8 @@ class GetVideoMetadataTests(unittest.TestCase):
 
         self.assertFalse(metadata["is_playlist"])
         self.assertEqual(metadata["playlist_count"], 0)
+        self.assertEqual(metadata["thumbnail"], "https://example.com/thumb.jpg")
+        self.assertFalse(metadata["is_live"])
         self.assertEqual(metadata["formats"], [{
             "format_id": "137",
             "resolution": "1080p",
@@ -53,6 +55,24 @@ class GetVideoMetadataTests(unittest.TestCase):
             "ext": "mp4",
             "filesize": 1000,
         }])
+
+
+    @patch("app.services.youtube.yt_dlp.YoutubeDL")
+    def test_single_flag_ignores_playlist_and_restricts_extractors(self, youtube_dl):
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {"id": "v", "live_status": "is_live"}
+
+        metadata = get_video_metadata("https://www.youtube.com/watch?v=v&list=PL1", single=True)
+
+        options = youtube_dl.call_args.args[0]
+        self.assertTrue(options["noplaylist"])
+        self.assertEqual(options["allowed_extractors"], ["youtube", "youtube:.*"])
+        self.assertTrue(metadata["is_live"])
+
+    @patch("app.services.youtube.yt_dlp.YoutubeDL")
+    def test_errors_become_value_error(self, youtube_dl):
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = RuntimeError("Video unavailable")
+        with self.assertRaisesRegex(ValueError, "Video unavailable"):
+            get_video_metadata("https://www.youtube.com/watch?v=v")
 
 
 if __name__ == "__main__":
