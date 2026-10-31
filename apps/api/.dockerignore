@@ -3,14 +3,12 @@
 !.env.example
 venv
 .venv
-__pycache__
-*.py[cod]
+**/__pycache__
+**/*.py[cod]
 *.log
 .pytest_cache
 tmp_downloads
 downloads
 tests
-alembic
-migrations
 start_services.sh
 requirements-dev.txt

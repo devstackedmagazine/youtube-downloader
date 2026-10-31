@@ -4,23 +4,31 @@
 # platform restarts it. SIGTERM stops both cleanly.
 set -eu
 
+celery_pid=
+# Celery gets QUIT (cold shutdown): a warm shutdown waits out the 30s broker poll,
+# and an in-flight job can't survive a container stop anyway (ephemeral disk).
+stop() {
+  kill -TERM "$uvicorn_pid" 2>/dev/null || true
+  [ -z "$celery_pid" ] || kill -QUIT "$celery_pid" 2>/dev/null || true
+}
+trap stop TERM INT
+
+uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" &
+uvicorn_pid=$!
+
+# On 0.1 vCPU both processes importing at once took 88 s before the port opened; a
+# waking free-tier service must answer quickly, so the worker starts once it does.
+until (exec 3<>"/dev/tcp/127.0.0.1/${PORT:-8000}") 2>/dev/null; do
+  kill -0 "$uvicorn_pid" 2>/dev/null || { wait "$uvicorn_pid" || exit $?; exit 1; }
+  sleep 1
+done
+
 celery -A app.tasks.celery_app.celery_app worker \
   --loglevel=info \
   --concurrency=1 \
   --max-memory-per-child="${CELERY_MAX_MEMORY_KB:-150000}" \
   --without-gossip --without-mingle --without-heartbeat &
 celery_pid=$!
-
-uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" &
-uvicorn_pid=$!
-
-# Celery gets QUIT (cold shutdown): a warm shutdown waits out the 30s broker poll,
-# and an in-flight job can't survive a container stop anyway (ephemeral disk).
-stop() {
-  kill -TERM "$uvicorn_pid" 2>/dev/null || true
-  kill -QUIT "$celery_pid" 2>/dev/null || true
-}
-trap stop TERM INT
 
 status=0
 wait -n || status=$?
