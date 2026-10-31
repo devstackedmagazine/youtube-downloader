@@ -1,0 +1,28 @@
+# Runs the API (uvicorn + Celery worker, one container) on a home machine.
+# Redis stays on Upstash. The port is bound to 127.0.0.1 only; Tailscale Funnel
+# publishes it on https://<machine>.<tailnet>.ts.net. See HOME_HOSTING.md.
+#
+#   docker compose -f docker-compose.home.yml up -d --build
+name: dltube-home
+
+services:
+  api:
+    build: ./apps/api
+    image: dltube-api:home
+    restart: unless-stopped
+    env_file: apps/api/.env.home
+    ports:
+      - "127.0.0.1:8000:8000"
+    # One job at a time (Celery concurrency 1); peaks around 330 MiB in tests.
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 2
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    # Downloads live in the container and are deleted after 24 h, before each new job.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

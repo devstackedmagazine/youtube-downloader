@@ -134,6 +134,28 @@ def test_rate_limit_falls_back_to_socket_ip_without_header(client, yt, fake_redi
     assert fake_redis.data["download:rate:testclient"] == 1
 
 
+@pytest.fixture
+def behind_funnel(monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "CLIENT_IP_HEADER", "x-forwarded-for")
+
+
+def test_rate_limit_behind_tailscale_funnel(client, yt, fake_redis, behind_funnel):
+    # Funnel's proxy replaces X-Forwarded-For with the one public client IP (it never appends),
+    # and the API is only reachable through it (127.0.0.1 bind), so the whole value is the client.
+    for _ in range(30):
+        assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "198.51.100.7"}).status_code == 200
+    assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "198.51.100.7"}).status_code == 429
+    assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "203.0.113.20"}).status_code == 200
+    assert fake_redis.data["download:rate:198.51.100.7"] == 31
+
+
+def test_local_request_without_funnel_header_uses_socket(client, yt, fake_redis, behind_funnel):
+    # e.g. the container health check or curl on the machine itself.
+    client.get("/api/metadata", params={"url": URL})
+    assert fake_redis.data["download:rate:testclient"] == 1
+
+
 def test_youtube_bot_check_is_503_with_plain_message(client):
     from app.services.youtube import YouTubeBlockedError
     with patch("app.routes.downloads.get_video_metadata", side_effect=YouTubeBlockedError()):

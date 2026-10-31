@@ -32,7 +32,7 @@ export default function DownloadPage() {
         }
       } catch (error) {
         if (!cancelled) {
-          setJob((current) => current ? { ...current, status: "failed", error_message: "We lost the conversion status. Please try again." } : current);
+          setJob((current) => current ? { ...current, status: "failed", error_message: error instanceof Error ? error.message : "We lost the conversion status. Please try again." } : current);
           setStatus("failed");
           trackEvent("download_status_failed", { jobId, error: String(error) });
         }

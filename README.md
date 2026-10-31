@@ -23,6 +23,10 @@ docker compose down
 
 The production API runs on Render's free tier from `render.yaml`; see [RENDER_DEPLOY.md](RENDER_DEPLOY.md).
 
+## Host the API at home
+
+Free alternative to Render if YouTube blocks the cloud IP: Docker + Tailscale Funnel, see [HOME_HOSTING.md](HOME_HOSTING.md).
+
 ## Deploy with Docker
 
 1. Copy `.env.example` to `.env` on the server.
