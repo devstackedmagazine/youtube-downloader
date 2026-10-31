@@ -18,9 +18,18 @@ export interface VideoMetadata {
     resolution: string;
     quality: number;
   }[];
+  is_live?: boolean;
   is_playlist?: boolean;
   playlist_count?: number;
   playlist_title?: string | null;
+  /** Longest video or section (seconds) the server will process. */
+  max_duration_seconds?: number;
+}
+
+/** Optional section of a single video, in seconds. null = from the start / to the end. */
+export interface ClipRange {
+  start_time: number | null;
+  end_time: number | null;
 }
 
 export type DownloadStatus = 
@@ -38,6 +47,8 @@ export interface DownloadJob {
   eta: string;
   error_message?: string;
   download_link?: string;
+  start_time?: number | null;
+  end_time?: number | null;
 }
 
 export interface User {

@@ -26,3 +26,15 @@ Thumbs.db
 # Env files
 .env
 .env.*.local
+# Python tooling / runtime output
+.venv/
+.pytest_cache/
+*.log
+tmp_downloads/
+downloads/
+celerybeat-schedule*
+
+# Next.js / TypeScript
+*.tsbuildinfo
+next-env.d.ts
+.env*.local

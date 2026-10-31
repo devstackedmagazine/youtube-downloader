@@ -19,6 +19,10 @@ To stop the stack:
 docker compose down
 ```
 
+## Deploy the API on Render
+
+The production API runs on Render's free tier from `render.yaml`; see [RENDER_DEPLOY.md](RENDER_DEPLOY.md).
+
 ## Deploy with Docker
 
 1. Copy `.env.example` to `.env` on the server.
@@ -38,8 +42,10 @@ docker compose up --build -d
 
 `NEXT_PUBLIC_API_URL` is compiled into the browser bundle. Rebuild the `web` service whenever it changes.
 
+Rate limiting keys on the socket address unless `CLIENT_IP_HEADER` names a header your proxy always overwrites with the client address. For nginx: `proxy_set_header X-Real-IP $remote_addr;` and `CLIENT_IP_HEADER=x-real-ip`. Keep port `8000` unreachable except through the proxy.
+
 ## Operational notes
 
 - Keep Redis private; the compose configuration intentionally does not publish its port.
-- Download files remain available for up to 24 hours. The included Celery Beat service removes expired job files hourly.
+- Download files remain available for up to 24 hours. The worker removes expired job files before each new job.
 - Only download content you are authorized to save and distribute.

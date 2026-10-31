@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DownloadStatus, VideoMetadata, VideoFormat, DownloadQuality, DownloadJob, DownloadScope } from "@/types";
+import { DownloadStatus, VideoMetadata, VideoFormat, DownloadQuality, DownloadJob, DownloadScope, ClipRange } from "@/types";
 import URLInput from "@/components/URLInput";
 import FormatSelector from "@/components/FormatSelector";
 import DownloadProgress from "@/components/DownloadProgress";
 import { trackEvent } from "@/lib/analytics";
-import { fetchMetadata, getDownloadStatus, startDownload } from "@/lib/api";
+import { fetchMetadata, getDownloadStatus, startDownload, wakeApi } from "@/lib/api";
 
 export default function DownloadPage() {
   const [status, setStatus] = useState<DownloadStatus>("idle");
@@ -16,6 +16,8 @@ export default function DownloadPage() {
   const [sourceUrl, setSourceUrl] = useState("");
   const jobId = job?.id;
   const jobStatus = job?.status;
+
+  useEffect(wakeApi, []);
 
   useEffect(() => {
     if (!jobId || jobStatus === "completed" || jobStatus === "failed") return;
@@ -60,14 +62,14 @@ export default function DownloadPage() {
     }
   };
 
-  const handleDownloadStart = async (format: VideoFormat, quality: DownloadQuality, scope: DownloadScope) => {
+  const handleDownloadStart = async (format: VideoFormat, quality: DownloadQuality, scope: DownloadScope, clip?: ClipRange) => {
     if (!metadata) return;
     if (!sourceUrl) return;
     setStatus("processing");
     setErrorMessage("");
-    trackEvent("download_started", { videoId: metadata.id, format, quality, scope });
+    trackEvent("download_started", { videoId: metadata.id, format, quality, scope, section: Boolean(clip) });
     try {
-      const newJob = await startDownload(sourceUrl, format, quality, scope);
+      const newJob = await startDownload(sourceUrl, format, quality, scope, clip);
       setJob(newJob);
       setStatus(newJob.status);
     } catch (error) {
