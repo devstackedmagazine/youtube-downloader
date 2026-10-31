@@ -50,8 +50,14 @@ class Settings(BaseSettings):
     METADATA_TIMEOUT_SECONDS: int = 30
     RATE_LIMIT_REQUESTS: int = 30
     RATE_LIMIT_WINDOW_SECONDS: int = 60
+    # Request header holding the real client IP, set by a proxy that overwrites any
+    # client-sent value (Render/Cloudflare: cf-connecting-ip). Empty uses the socket peer.
+    CLIENT_IP_HEADER: str = ""
     # Comma-separated yt-dlp YouTube player clients. Empty uses yt-dlp's defaults.
     YT_PLAYER_CLIENTS: str = ""
+    # Optional proxy for all YouTube traffic (yt-dlp and its ffmpeg), e.g.
+    # http://user:pass@host:port. Needed when YouTube blocks the server's own IP.
+    YT_PROXY: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

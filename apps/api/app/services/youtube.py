@@ -14,6 +14,18 @@ ALLOWED_EXTRACTORS = ["youtube", "youtube:.*"]
 LIVE_STATUSES = {"is_live", "is_upcoming"}
 
 
+class YouTubeBlockedError(ValueError):
+    """YouTube refused the server's IP ("Sign in to confirm you're not a bot"); not the user's fault."""
+
+    def __init__(self):
+        super().__init__("YouTube is blocking downloads from our server right now. Please try again later.")
+
+
+def is_bot_check(error: Exception) -> bool:
+    # yt-dlp's text for this tells the user to pass --cookies, so it must not be shown as is.
+    return "confirm you" in str(error) and "not a bot" in str(error)
+
+
 def validate_youtube_url(url: str) -> bool:
     """Perform cheap, deterministic validation before calling yt-dlp."""
     if len(url) > 2048:
@@ -39,6 +51,8 @@ def base_ydl_options(skip_player_js: bool = False) -> Dict[str, Any]:
         "allowed_extractors": ALLOWED_EXTRACTORS,
         "socket_timeout": 30,
     }
+    if settings.YT_PROXY:
+        options["proxy"] = settings.YT_PROXY
     if youtube_args:
         options["extractor_args"] = {"youtube": youtube_args}
     return options
@@ -101,4 +115,6 @@ def get_video_metadata(youtube_url: str, single: bool = False) -> Dict[str, Any]
 
     except Exception as e:
         logger.warning("Failed to get video metadata: %s", e)
+        if is_bot_check(e):
+            raise YouTubeBlockedError() from e
         raise ValueError(f"Could not fetch video information: {e}") from e

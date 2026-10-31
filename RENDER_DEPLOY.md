@@ -38,7 +38,10 @@ The other variables come from `render.yaml` and need no input. Check them under 
 | `TRUSTED_HOSTS` | `localhost,127.0.0.1` | Leave as is. The API also trusts the `onrender.com` host automatically, through `RENDER_EXTERNAL_HOSTNAME`, which Render sets itself. If you attach a custom domain to the API (e.g. `api.example.com`), add it here: `api.example.com,localhost,127.0.0.1`. |
 | `DOWNLOAD_DIR` | `/app/tmp_downloads` | |
 | `MAX_DURATION_SECONDS`, `MAX_PLAYLIST_ITEMS`, `METADATA_TIMEOUT_SECONDS`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`, `CELERY_MAX_MEMORY_KB` | `1800`, `100`, `30`, `30`, `60`, `150000` | Safety limits; the defaults are fine. |
+| `CLIENT_IP_HEADER` | `cf-connecting-ip` | Rate limiting needs it: Cloudflare in front of Render sets this header to the real client IP. |
 | optional: `CORS_ORIGIN_REGEX` | e.g. `^https://dltube-[a-z0-9-]+-<team-slug>\.vercel\.app$` | Only if Vercel preview deployments should be able to call the API. |
+
+Optional secret: `YT_PROXY` (`http://user:pass@host:port`), if YouTube blocks Render's IP. See PRODUCTION_TEST_REPORT.md. Add it under **Environment** by hand.
 
 Do not set `PORT`. Render sets it (10000) and the container listens on it. Do not set `DATABASE_URL`, because there is no database.
 

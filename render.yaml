@@ -24,7 +24,8 @@ services:
       - key: FRONTEND_URL
         value: https://dltube.vercel.app
       # Optional, not set here: CORS_ORIGIN_REGEX (Vercel previews, e.g.
-      # ^https://dltube-[a-z0-9-]+-<team-slug>\.vercel\.app$), YT_PLAYER_CLIENTS, DENO_V8_FLAGS.
+      # ^https://dltube-[a-z0-9-]+-<team-slug>\.vercel\.app$), YT_PLAYER_CLIENTS, DENO_V8_FLAGS,
+      # YT_PROXY (secret; add it under Environment by hand, see PRODUCTION_TEST_REPORT.md).
       # Render's onrender.com host is trusted automatically (RENDER_EXTERNAL_HOSTNAME).
       # Add a custom domain here if you attach one.
       - key: TRUSTED_HOSTS
@@ -39,6 +40,10 @@ services:
         value: "30"
       - key: RATE_LIMIT_WINDOW_SECONDS
         value: "60"
+      # Cloudflare sits in front of Render and overwrites this header with the real client
+      # IP; X-Forwarded-For keeps client-sent values and ends with a Cloudflare edge IP.
+      - key: CLIENT_IP_HEADER
+        value: cf-connecting-ip
       - key: CELERY_MAX_MEMORY_KB
         value: "150000"
       # Wiped on every restart or spin-down; files only need to outlive one job.

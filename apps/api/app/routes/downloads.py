@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 
 from app.config import Settings, get_settings
 from app.schemas.download import MIN_CLIP_SECONDS, DownloadCreate, DownloadScopeEnum, JobResponse
-from app.services.youtube import get_video_metadata, validate_youtube_url
+from app.services.youtube import YouTubeBlockedError, get_video_metadata, validate_youtube_url
 from app.tasks.convert_video import clip_length, convert_video_task
 
 logger = logging.getLogger(__name__)
@@ -32,17 +32,14 @@ def optional_float(value: str | None) -> float | None:
     return float(value) if value else None
 
 
-def client_ip(request: Request) -> str:
-    """The client address as seen by the platform proxy.
+def client_ip(request: Request, header: str) -> str:
+    """The client address: from ``header`` when the platform's proxy sets it, else the socket peer.
 
-    Render's proxy appends the address it received the connection from to
-    X-Forwarded-For, so only the last entry is trustworthy; anything before it
-    may have been sent by the client. Without the header (local runs) use the
-    socket peer. Only correct behind a proxy that appends: exposed directly, a
-    client could set the header itself.
+    Only name a header the proxy always overwrites. On Render that's Cloudflare's
+    CF-Connecting-IP: X-Forwarded-For keeps whatever the client sent and ends with a
+    Cloudflare edge IP, so neither its first nor its last entry identifies the client.
     """
-    forwarded = request.headers.get("x-forwarded-for", "").split(",")[-1].strip()
-    return forwarded or (request.client.host if request.client else "unknown")
+    return (request.headers.get(header) if header else None) or (request.client.host if request.client else "unknown")
 
 
 async def enforce_rate_limit(request: Request, redis: Redis = Depends(get_redis), settings: Settings = Depends(get_settings)):
@@ -51,7 +48,7 @@ async def enforce_rate_limit(request: Request, redis: Redis = Depends(get_redis)
     If Redis is unreachable the request is refused with 503 (fail closed) rather
     than letting unbounded yt-dlp/ffmpeg work through.
     """
-    client = client_ip(request)
+    client = client_ip(request, settings.CLIENT_IP_HEADER)
     key = f"download:rate:{client}"
     try:
         count = await redis.incr(key)
@@ -71,6 +68,8 @@ async def fetch_metadata(url: str, settings: Settings, single: bool = False) -> 
         return await asyncio.wait_for(
             asyncio.to_thread(get_video_metadata, url, single), timeout=settings.METADATA_TIMEOUT_SECONDS
         )
+    except YouTubeBlockedError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except TimeoutError as error:
         raise HTTPException(status_code=504, detail="Looking up the video timed out. Please try again.") from error
     except ValueError as error:

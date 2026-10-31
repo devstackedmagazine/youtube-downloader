@@ -92,26 +92,49 @@ def test_rate_limit(client, yt):
     assert "detail" in response.json()
 
 
-def test_rate_limit_keys_on_last_forwarded_ip(client, yt):
+@pytest.fixture
+def behind_cloudflare(monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "CLIENT_IP_HEADER", "cf-connecting-ip")
+
+
+def test_rate_limit_keys_on_client_ip_header(client, yt, behind_cloudflare):
     for _ in range(30):
-        assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "203.0.113.5"}).status_code == 200
-    assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "203.0.113.5"}).status_code == 429
-    # A different client (different proxy-appended IP) has its own budget.
-    assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "198.51.100.9"}).status_code == 200
+        assert client.get("/api/metadata", params={"url": URL}, headers={"cf-connecting-ip": "203.0.113.5"}).status_code == 200
+    assert client.get("/api/metadata", params={"url": URL}, headers={"cf-connecting-ip": "203.0.113.5"}).status_code == 429
+    # A different client has its own budget.
+    assert client.get("/api/metadata", params={"url": URL}, headers={"cf-connecting-ip": "198.51.100.9"}).status_code == 200
 
 
-def test_spoofed_forwarded_for_cannot_bypass_limit(client, yt):
-    # The client prepends a fresh fake IP each time; the proxy appends the real one last.
+def test_spoofed_forwarded_for_cannot_bypass_limit(client, yt, behind_cloudflare):
+    # What production showed: X-Forwarded-For ends with a different Cloudflare edge IP per
+    # request and keeps client-sent entries, so a limit keyed on any of its entries never triggers.
     for i in range(30):
-        headers = {"x-forwarded-for": f"10.0.0.{i}, 203.0.113.5"}
+        headers = {"x-forwarded-for": f"10.0.0.{i}, 203.0.113.5, 172.68.1.{i}", "cf-connecting-ip": "203.0.113.5"}
         assert client.get("/api/metadata", params={"url": URL}, headers=headers).status_code == 200
-    headers = {"x-forwarded-for": "10.9.9.9, 192.0.2.1, 203.0.113.5"}
+    headers = {"x-forwarded-for": "10.9.9.9, 172.68.9.9", "cf-connecting-ip": "203.0.113.5"}
     assert client.get("/api/metadata", params={"url": URL}, headers=headers).status_code == 429
 
 
-def test_rate_limit_falls_back_to_socket_ip(client, yt, fake_redis):
+def test_client_headers_ignored_unless_configured(client, yt, fake_redis):
+    # Self-hosted without Cloudflare: a client-sent CF-Connecting-IP or X-Forwarded-For must not pick the key.
+    for i in range(31):
+        response = client.get("/api/metadata", params={"url": URL}, headers={"cf-connecting-ip": f"10.0.0.{i}", "x-forwarded-for": f"10.1.0.{i}"})
+    assert response.status_code == 429
+    assert fake_redis.data["download:rate:testclient"] == 31
+
+
+def test_rate_limit_falls_back_to_socket_ip_without_header(client, yt, fake_redis, behind_cloudflare):
     client.get("/api/metadata", params={"url": URL})
     assert fake_redis.data["download:rate:testclient"] == 1
+
+
+def test_youtube_bot_check_is_503_with_plain_message(client):
+    from app.services.youtube import YouTubeBlockedError
+    with patch("app.routes.downloads.get_video_metadata", side_effect=YouTubeBlockedError()):
+        response = client.get("/api/metadata", params={"url": URL})
+    assert response.status_code == 503
+    assert "blocking" in response.json()["detail"] and "cookies" not in response.json()["detail"]
 
 
 def test_rate_limit_redis_down_is_503(client, yt, fake_redis):

@@ -42,7 +42,7 @@ docker compose up --build -d
 
 `NEXT_PUBLIC_API_URL` is compiled into the browser bundle. Rebuild the `web` service whenever it changes.
 
-Rate limiting keys on the last address in `X-Forwarded-For`, so the proxy must append the client address to it (nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`) and port `8000` must not be reachable directly.
+Rate limiting keys on the socket address unless `CLIENT_IP_HEADER` names a header your proxy always overwrites with the client address. For nginx: `proxy_set_header X-Real-IP $remote_addr;` and `CLIENT_IP_HEADER=x-real-ip`. Keep port `8000` unreachable except through the proxy.
 
 ## Operational notes
 

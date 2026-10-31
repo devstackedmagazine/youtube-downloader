@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app.services.youtube import get_video_metadata, settings
+from app.services.youtube import YouTubeBlockedError, get_video_metadata, settings
 
 
 class GetVideoMetadataTests(unittest.TestCase):
@@ -74,6 +74,21 @@ class GetVideoMetadataTests(unittest.TestCase):
         youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = RuntimeError("Video unavailable")
         with self.assertRaisesRegex(ValueError, "Video unavailable"):
             get_video_metadata("https://www.youtube.com/watch?v=v")
+
+
+    @patch("app.services.youtube.yt_dlp.YoutubeDL")
+    def test_bot_check_becomes_youtube_blocked(self, youtube_dl):
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = RuntimeError('ERROR: [youtube] jNQXAC9IVRw: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication.')
+        with self.assertRaises(YouTubeBlockedError) as raised:
+            get_video_metadata("https://www.youtube.com/watch?v=v")
+        self.assertNotIn("cookies", str(raised.exception))
+
+
+    def test_proxy_only_when_configured(self):
+        from app.services.youtube import base_ydl_options
+        self.assertNotIn("proxy", base_ydl_options())
+        with patch.object(settings, "YT_PROXY", "http://user:pw@proxy.example:8080"):
+            self.assertEqual(base_ydl_options()["proxy"], "http://user:pw@proxy.example:8080")
 
 
 if __name__ == "__main__":

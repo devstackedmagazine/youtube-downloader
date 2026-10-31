@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.tasks.convert_video import clip_length, clip_options, download_options, make_match_filter, output_filename, settings
+from app.tasks.convert_video import clip_length, convert_video_task, clip_options, download_options, make_match_filter, output_filename, settings
 
 
 def options_for(job):
@@ -130,6 +130,30 @@ class ClipLengthTests(unittest.TestCase):
         self.assertEqual(clip_length(5, 12, 19), 7)
         self.assertEqual(clip_length(5, 25, 19), 14)
         self.assertEqual(clip_length(19, None, 19), 0)
+
+
+
+class FailureMessageTests(unittest.TestCase):
+    def run_failing_job(self, error):
+        job = {"youtube_url": "https://www.youtube.com/watch?v=v", "format": "mp4", "quality": "720p", "scope": "single"}
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(settings, "DOWNLOAD_DIR", directory), \
+             patch("app.tasks.convert_video.redis_client") as redis_client, \
+             patch("app.tasks.convert_video.yt_dlp.YoutubeDL") as youtube_dl, \
+             patch("app.tasks.convert_video.update_job") as update:
+            redis_client.hgetall.return_value = job
+            youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = error
+            convert_video_task("job-1")
+        return update.call_args.kwargs
+
+    def test_bot_check_message_is_plain(self):
+        final = self.run_failing_job(RuntimeError('ERROR: [youtube] jNQXAC9IVRw: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication.'))
+        self.assertEqual(final["status"], "failed")
+        self.assertIn("blocking", final["error_message"])
+        self.assertNotIn("cookies", final["error_message"])
+
+    def test_other_errors_keep_their_message(self):
+        self.assertEqual(self.run_failing_job(RuntimeError("Video unavailable"))["error_message"], "Video unavailable")
 
 
 if __name__ == "__main__":

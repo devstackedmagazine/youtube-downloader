@@ -12,7 +12,7 @@ import yt_dlp
 from yt_dlp.utils import download_range_func, sanitize_filename
 
 from app.config import get_settings
-from app.services.youtube import base_ydl_options, is_live
+from app.services.youtube import YouTubeBlockedError, base_ydl_options, is_bot_check, is_live
 from app.tasks.celery_app import celery_app
 from app.tasks.cleanup import remove_expired_downloads
 
@@ -215,4 +215,4 @@ def convert_video_task(self, job_id: str) -> None:
         update_job(job_id, status="completed", progress=100, file_path=str(output_path), title=info.get("title") or "", filename=filename)
     except Exception as error:
         logger.warning("Download job %s failed: %r", job_id, error)
-        update_job(job_id, status="failed", error_message=str(error), progress=0)
+        update_job(job_id, status="failed", error_message=str(YouTubeBlockedError() if is_bot_check(error) else error), progress=0)
