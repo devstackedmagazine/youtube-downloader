@@ -13,9 +13,9 @@
     "start": "npm run start --workspaces"
   },
   "overrides": {
-    "postcss": "8.5.18",
+    "postcss": "8.5.23",
     "next": {
-      "postcss": "8.5.18"
+      "postcss": "8.5.23"
     }
   }
 }
