@@ -6,7 +6,7 @@ import URLInput from "@/components/URLInput";
 import FormatSelector from "@/components/FormatSelector";
 import DownloadProgress from "@/components/DownloadProgress";
 import { trackEvent } from "@/lib/analytics";
-import { fetchMetadata, getDownloadStatus, startDownload } from "@/lib/api";
+import { fetchMetadata, getDownloadStatus, startDownload, wakeApi } from "@/lib/api";
 
 export default function DownloadPage() {
   const [status, setStatus] = useState<DownloadStatus>("idle");
@@ -16,6 +16,8 @@ export default function DownloadPage() {
   const [sourceUrl, setSourceUrl] = useState("");
   const jobId = job?.id;
   const jobStatus = job?.status;
+
+  useEffect(wakeApi, []);
 
   useEffect(() => {
     if (!jobId || jobStatus === "completed" || jobStatus === "failed") return;

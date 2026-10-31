@@ -1,5 +1,6 @@
 "use client";
 import { VideoMetadata, DownloadJob, VideoFormat, DownloadQuality, DownloadScope, DownloadStatus, ClipRange } from "../types";
+import { fetchWhileWaking } from "./wake";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
@@ -29,10 +30,13 @@ function errorMessage(data: unknown, fallback: string): string {
   return fallback;
 }
 
-async function request<T>(path: string, fallbackError: string, init?: RequestInit): Promise<T> {
+/** Start waking a sleeping API early (e.g. when the page opens); the result is ignored. */
+export const wakeApi = () => { fetch(`${API_BASE}/api/health`).catch(() => {}); };
+
+async function request<T>(path: string, fallbackError: string, init?: RequestInit, retryWhileWaking = false): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, init);
+    response = await (retryWhileWaking ? fetchWhileWaking : fetch)(`${API_BASE}${path}`, init);
   } catch {
     throw new Error("We could not reach the server. Check your connection and try again.");
   }
@@ -58,7 +62,8 @@ function normalizeJob(data: DownloadApiResponse): DownloadJob {
 
 export const fetchMetadata = async (url: string): Promise<VideoMetadata> => {
   const data = await request<VideoMetadata & { thumbnail_url?: string }>(
-    `/api/metadata?url=${encodeURIComponent(url)}`, "Failed to fetch metadata",
+    // The first request after the API has slept; GET is safe to retry.
+    `/api/metadata?url=${encodeURIComponent(url)}`, "Failed to fetch metadata", undefined, true,
   );
   return {
     id: data.id,
