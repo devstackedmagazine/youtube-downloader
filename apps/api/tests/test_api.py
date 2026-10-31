@@ -24,7 +24,12 @@ def post(client, **body):
 
 def test_health_has_no_dependencies(client, fake_redis):
     fake_redis.down = True
-    assert client.get("/api/health").json() == {"status": "ok"}
+    assert client.get("/api/health").json() == {"status": "ok", "commit": ""}
+
+
+def test_health_reports_render_commit(client, monkeypatch):
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "f262c47aa1b2c3d4")
+    assert client.get("/api/health").json()["commit"] == "f262c47"
 
 
 def test_ready_ok(client):

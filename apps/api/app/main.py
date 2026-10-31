@@ -89,8 +89,11 @@ app.include_router(downloads.router, prefix="/api")
 
 @app.get("/api/health")
 async def health():
-    """Liveness only: no dependencies, so a Redis outage doesn't restart the container."""
-    return {"status": "ok"}
+    """Liveness only: no dependencies, so a Redis outage doesn't restart the container.
+
+    ``commit`` (set by Render) shows which deploy is live.
+    """
+    return {"status": "ok", "commit": os.environ.get("RENDER_GIT_COMMIT", "")[:7]}
 
 
 @app.get("/api/ready")
