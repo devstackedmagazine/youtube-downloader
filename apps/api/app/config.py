@@ -51,7 +51,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUESTS: int = 30
     RATE_LIMIT_WINDOW_SECONDS: int = 60
     # Request header holding the real client IP, set by a proxy that overwrites any
-    # client-sent value (Render/Cloudflare: cf-connecting-ip). Empty uses the socket peer.
+    # client-sent value (Render/Cloudflare: cf-connecting-ip; Tailscale Funnel:
+    # x-forwarded-for, which it replaces with the client IP). Empty uses the socket peer.
     CLIENT_IP_HEADER: str = ""
     # Comma-separated yt-dlp YouTube player clients. Empty uses yt-dlp's defaults.
     YT_PLAYER_CLIENTS: str = ""

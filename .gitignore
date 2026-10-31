@@ -26,6 +26,8 @@ Thumbs.db
 # Env files
 .env
 .env.*.local
+# Home hosting secrets (docker-compose.home.yml); the .example stays tracked
+.env.home
 # Python tooling / runtime output
 .venv/
 .pytest_cache/

@@ -1,6 +1,7 @@
 "use client";
 import { VideoMetadata, DownloadJob, VideoFormat, DownloadQuality, DownloadScope, DownloadStatus, ClipRange } from "../types";
 import { fetchWhileWaking } from "./wake";
+import { friendlyError } from "./errors";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
@@ -38,10 +39,10 @@ async function request<T>(path: string, fallbackError: string, init?: RequestIni
   try {
     response = await (retryWhileWaking ? fetchWhileWaking : fetch)(`${API_BASE}${path}`, init);
   } catch {
-    throw new Error("We could not reach the server. Check your connection and try again.");
+    throw new Error(friendlyError(null, null, fallbackError));
   }
   const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(errorMessage(data, fallbackError));
+  if (!response.ok) throw new Error(friendlyError(response.status, data === null ? null : errorMessage(data, ""), fallbackError));
   return data as T;
 }
 
