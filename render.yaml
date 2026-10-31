@@ -1,0 +1,46 @@
+# Render Blueprint for the API (FastAPI + Celery worker in one container).
+# The frontend stays on Vercel and Redis on Upstash. See RENDER_DEPLOY.md.
+services:
+  - type: web
+    name: dltube-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    rootDir: apps/api
+    # Both paths are relative to the repo root, not rootDir.
+    dockerContext: ./apps/api
+    dockerfilePath: ./apps/api/Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      # Secrets: Render asks for these when the Blueprint is created; nothing is committed.
+      - key: REDIS_URL
+        sync: false
+      - key: CELERY_BROKER_URL
+        sync: false
+      - key: CELERY_RESULT_BACKEND
+        sync: false
+      - key: FRONTEND_URL
+        value: https://dltube.vercel.app
+      # Optional, not set here: CORS_ORIGIN_REGEX (Vercel previews, e.g.
+      # ^https://dltube-[a-z0-9-]+-<team-slug>\.vercel\.app$), YT_PLAYER_CLIENTS, DENO_V8_FLAGS.
+      # Render's onrender.com host is trusted automatically (RENDER_EXTERNAL_HOSTNAME).
+      # Add a custom domain here if you attach one.
+      - key: TRUSTED_HOSTS
+        value: localhost,127.0.0.1
+      - key: MAX_DURATION_SECONDS
+        value: "1800"
+      - key: MAX_PLAYLIST_ITEMS
+        value: "100"
+      - key: METADATA_TIMEOUT_SECONDS
+        value: "30"
+      - key: RATE_LIMIT_REQUESTS
+        value: "30"
+      - key: RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: CELERY_MAX_MEMORY_KB
+        value: "150000"
+      # Wiped on every restart or spin-down; files only need to outlive one job.
+      - key: DOWNLOAD_DIR
+        value: /app/tmp_downloads

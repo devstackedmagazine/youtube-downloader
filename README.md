@@ -19,6 +19,10 @@ To stop the stack:
 docker compose down
 ```
 
+## Deploy the API on Render
+
+The production API runs on Render's free tier from `render.yaml`; see [RENDER_DEPLOY.md](RENDER_DEPLOY.md).
+
 ## Deploy with Docker
 
 1. Copy `.env.example` to `.env` on the server.
@@ -37,6 +41,8 @@ docker compose up --build -d
 ```
 
 `NEXT_PUBLIC_API_URL` is compiled into the browser bundle. Rebuild the `web` service whenever it changes.
+
+Rate limiting keys on the last address in `X-Forwarded-For`, so the proxy must append the client address to it (nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`) and port `8000` must not be reachable directly.
 
 ## Operational notes
 

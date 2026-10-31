@@ -2,7 +2,70 @@
 
 Branch: `agent/stabilize-and-clip` (from `master` @ `1e0e310`). Date: 2026-10-30. No secrets appear anywhere in this report.
 
-## 1. Summary
+## 0. Follow-up (2026-10-31): moving the API to Render's free tier
+
+**Target:** Render free web service (512 MB RAM, 0.1 CPU, Docker from GitHub, sleeps after 15 min idle, disk wiped on restart). Vercel and Upstash are unchanged. Deploy steps are in **[RENDER_DEPLOY.md](RENDER_DEPLOY.md)**. Six of the eight allowed YouTube requests were used.
+
+**Memory test.** Production image, `--memory=512m --memory-swap=512m --cpus=0.1`, `PORT=10000`, Deno heap cap **removed**, local Redis:
+
+| | POST | Job | Output | Peak memory (cgroup, cumulative) |
+|---|---|---|---|---|
+| idle, worker ready | | | | 133 MiB |
+| full MP4 | 9.4 s | 39.0 s | 19.02 s, AV1 + AAC | 291 MiB |
+| section MP4 5→12 s | 4.4 s | 32.4 s | 7.000 s, H.264 + AAC | **332 MiB** |
+| section MP3 5→12 s | 6.0 s | 22.8 s | 7.032 s, MP3 | 332 MiB |
+
+- **No OOM kills** (`memory.events`: `oom_kill 0`).
+- No `n challenge solving failed` warnings, so yt-dlp ran in full mode rather than the degraded mode it used at 256 MB.
+- Filenames are correct.
+- Jobs are 2–4× slower than without a CPU cap; that's the 0.1 CPU.
+- **Change:** the Dockerfile no longer caps Deno's heap. `DENO_V8_FLAGS=--max-old-space-size=64` is documented for 256 MB hosts.
+
+**What failed at 512 MB / 0.1 CPU, and the fixes:**
+- **Cold start took 88 s to open the port.** uvicorn and Celery imported in parallel, and importing the API alone takes 46 s at a hard 0.1 CPU. The bytecode was already compiled, so it's pure CPU.
+  - Fix: `start.sh` now starts uvicorn first and starts Celery only once the port answers.
+  - Result: **port open in 52 s, worker ready at 84 s.**
+  - `docker stop` takes 5.4 s, or 0.7 s if the container is stopped during startup. The trap is now set before the wait, because bash as PID 1 ignores SIGTERM without one.
+- **The first request after sleeping would fail in the browser.** While a service wakes, Render answers with an HTML loading page. A cross-origin `fetch` from Vercel gets no CORS headers, so it fails as "could not reach the server".
+  - Fix (web): the download page pings `/api/health` on load.
+  - Fix (web): `fetchMetadata` retries for up to 90 s, every 3 s, but only while the response looks like Render's proxy: fetch throws, or a non-JSON 502–504.
+  - The API's own errors are JSON and are not retried. POST/status are not retried; by then the API is awake.
+  - New `lib/wake.ts` with 3 tests.
+- **A file lost on restart was reported as ready.** The job record in Redis survives a restart, but the file doesn't. Status showed "Your file is ready" with no button.
+  - Fix: status now returns `failed`, "This file has expired. Please convert it again."
+- **Host check vs Render.** The `onrender.com` host is now trusted automatically from Render's `RENDER_EXTERNAL_HOSTNAME`, so nobody has to guess the service name. `/api/health` skips the Host check, because Render's health checker may not send the public host. The endpoint returns no data.
+
+**Rate limiting** now keys on the **last** `X-Forwarded-For` entry, the one Render's proxy appends, and falls back to the socket IP when the header is absent. Tests cover:
+- per-IP budgets
+- a client prepending fresh fake IPs on every request is still limited (the "can't bypass" test)
+- the socket-IP fallback
+
+Limit: if the API port is reachable **without** a proxy that appends to the header, a client could set the last entry itself. On Render it isn't reachable that way, and README now says so for self-hosting.
+
+**Render readiness:**
+- uvicorn listens on `${PORT:-8000}`, and the Docker HEALTHCHECK uses `PORT` too.
+- `render.yaml` defines one free Docker web service in Frankfurt with health check `/api/health` and every setting the app reads.
+  - `REDIS_URL`, `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` use `sync: false`, so no values are committed.
+  - Context and Dockerfile paths are repo-root relative, per Render's spec.
+- Nothing needs files to survive a restart:
+  - Downloads live only for one job.
+  - `tmp_downloads` is created in the image and per job.
+  - Job state and the queue are in Upstash.
+- `DATABASE_URL` and the Postgres/Alembic mentions are gone from config, docs and `.env.example`. The leftover `alembic`/`migrations` lines in `apps/api/.dockerignore` are gone too. That file now also excludes nested `__pycache__`; host 3.12 `.pyc` files were being copied into the image.
+
+**Tests:** backend **81 passed** in the production image (75 before, plus 3 rate-limit, 1 health/Host, 1 Render host, 1 expired file). Web: **9 passed** (6 + 3), `tsc` clean, lint unchanged (the 1 existing warning).
+
+**Not verified (needs a real Render deploy, which I may not do):**
+- Whether Render's proxy really appends the client IP **last**. The brief says it does; I couldn't observe it.
+- The exact Host header Render's health checker sends.
+- How long Render holds a request while waking.
+- Whether Render's 0.1 CPU is a hard cap like Docker's `--cpus=0.1`. If it bursts, cold starts will be faster than measured.
+
+**Still open:**
+- A job that is running when the service restarts or sleeps stays `processing` until its 24 h TTL. While a page is polling, the service won't sleep, but a closed tab plus a long job could hit this.
+- Render may suspend free services with "unusually high public-internet traffic"; video downloads are that kind of traffic. Keep an eye on usage.
+
+## 1. Summary (original pass, 2026-10-30, Northflank)
 
 - **What I found.** The API container could not start. `start.sh` runs `alembic upgrade head` under `set -e`, but the Postgres/SQLAlchemy/Alembic layer was **deliberately removed** in `e32a518` (job state moved to Redis) and Alembic is no longer installed, so the container exited right away. Production `/api/health` returned **HTTP 503 with an empty body** (Northflank's edge, so no healthy container), which matches this.
 - **The rebase.** It did **not** lose any fix that still matters. Fatlum's commit `812082d` (asyncpg, psycopg2, metadata endpoint) patched the old DB-backed code. The Redis-only version that won already had a better metadata endpoint and needs no DB drivers.
@@ -131,8 +194,8 @@ Commits: `6d62a43` hygiene · `2e52ed9` image/start · `78776ee` hardening + sec
 ### Not fixed
 | Severity | Issue | Recommendation |
 |---|---|---|
-| **High** | **256 MB is too small for yt-dlp's YouTube challenge solver (~215 MB).** Downloads work in degraded mode ("some formats may be missing"). If YouTube makes the challenge mandatory for all formats, downloads will fail. | More RAM (≥ 512 MB) or a separate worker service; both are paid or architectural, so see "Needs Fatlum". Then clear `DENO_V8_FLAGS`. |
-| Medium | **Rate limiting may group all users together.** Behind Northflank's proxy, `request.client.host` is probably the proxy IP (uvicorn only trusts `X-Forwarded-For` from 127.0.0.1), so everyone may share 30 requests/minute. Not verified. | Find Northflank's ingress IP range and set `FORWARDED_ALLOW_IPS` to it. Don't use `*`, which lets clients spoof the header. |
+| ~~High~~ resolved | 256 MB was too small for yt-dlp's YouTube challenge solver (~215 MB). | **Resolved by Render's 512 MB** (section 0): peak 332 MiB with the solver uncapped. |
+| ~~Medium~~ fixed | Rate limiting grouped all users behind the proxy IP. | **Fixed** (section 0): keyed on the last `X-Forwarded-For` entry. |
 | Medium | If the container restarts mid-job, the job stays "processing" until its 24 h TTL, and the page keeps polling (Redis commands). | Mark stale jobs failed after `task_time_limit`, and stop polling after N minutes. |
 | Medium | API and worker share 0.1 vCPU, so the API is slow while ffmpeg runs. | Separate worker service. |
 | Low | Full MP4s can be AV1 ("best regardless of codec"), which some players (older iOS/QuickTime) can't play. Existing behavior. | Prefer `vcodec:h264` via `format_sort`. |
@@ -142,69 +205,33 @@ Commits: `6d62a43` hygiene · `2e52ed9` image/start · `78776ee` hardening + sec
 
 ## 6. Decisions I made on my own
 
-1. **Kept Redis-only job storage and did not bring Postgres back.** The code removed it on purpose, and reintroducing it would be an architecture change. As a result, `DATABASE_URL` is ignored, `/api/ready` checks only Redis, and section start/end are stored in the Redis job hash instead of an Alembic revision.
+1. **Kept Redis-only job storage and did not bring Postgres back.** The code removed it on purpose, and reintroducing it would be an architecture change. As a result, `/api/ready` checks only Redis, and section start/end are stored in the Redis job hash instead of an Alembic revision.
 2. **Removed `-B` (embedded beat), contrary to the brief.** Beat is a whole extra Python process; dropping it saved ~26 MiB, which mattered at 256 MB. Expired files are now removed at the start of every job instead. Files only appear when jobs run, so disk use stays bounded.
 3. **Accurate cuts stay on** (`force_keyframes_at_cuts=True`), with ffmpeg `-threads 1 -preset veryfast`. On 0.1 vCPU, extra threads add memory, not speed. The 7 s clip took 9.8 s end to end. Long sections re-encode at roughly real time or slower on 0.1 vCPU, which is why `MAX_DURATION_SECONDS` defaults to 30 minutes.
-4. **Deno heap is capped by default** (`DENO_V8_FLAGS=--max-old-space-size=64`), and metadata lookups skip player JS. A clean, fast solver failure is better than the kernel OOM-killing uvicorn or ffmpeg, which happened in run 1.
+4. **Deno heap was capped at 64 MB for 256 MB**; metadata lookups skip player JS. *Superseded on Render (512 MB): the cap is removed from the image (section 0).*
 5. **Clip progress is stage-based.** yt-dlp's ffmpeg range downloader reports no byte progress, so progress goes 5 → 40 → 75 → 92 → 100.
 6. **Celery cold shutdown plus a 5 s kill on stop.** The alternative was a shorter broker poll, which would cost Upstash commands.
 7. **`https://dltube.vercel.app` stays allowed in CORS** even if `FRONTEND_URL` is wrong. It was the production fix that had been added before.
-8. **TrustedHost re-enabled** (the brief asked to keep it), with 127.0.0.1 and localhost always allowed so health checks work. **This makes the `TRUSTED_HOSTS` value in Northflank critical** (runbook step 1).
+8. **TrustedHost re-enabled** (the brief asked to keep it), with 127.0.0.1 and localhost always allowed so health checks work. On Render the `onrender.com` host is trusted automatically (section 0).
 9. Proxy routes removed; `apps/web/Dockerfile` kept (docker-compose uses it); the Node built-in test runner instead of adding Jest or Vitest.
 10. Python dependencies stay within current major versions (redis-py held at 5.x); yt-dlp is the latest release (2026.10.26).
 
 ## 7. Needs Fatlum (in this order)
 
-- [ ] **1. Northflank env vars** (names and formats only; set values in the dashboard):
-  - `TRUSTED_HOSTS` **must contain** `p01--youtube-downloader--q9m2bv5gvkfq.code.run`. Otherwise every request gets 400 and the log says `Rejected request with Host …`. Comma-separated; `*` disables the check.
-  - `REDIS_URL` = `rediss://default:<token>@<host>.upstash.io:6379` (must be `rediss://`).
-  - `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`: delete them (they fall back to `REDIS_URL`) or set them to the same `rediss://` URL.
-  - `FRONTEND_URL` = `https://dltube.vercel.app`.
-  - Optional: `MAX_DURATION_SECONDS` (default 1800), `CORS_ORIGIN_REGEX`, for example `^https://dltube-[a-z0-9-]+-<your-vercel-team-slug>\.vercel\.app$` for previews.
-  - `DATABASE_URL` is unused and can be removed.
-  - Health check: HTTP `/api/health` on port 8000 for liveness; `/api/ready` for readiness if Northflank lets you set one.
-- [ ] **2. Vercel:** no change. `NEXT_PUBLIC_API_URL` stays the Northflank URL.
-- [ ] **3. Credentials:** I found **no secrets committed** in the repo or its history. The hits for `sk_test`, `SG.`, `JWT_SECRET` and `postgresql://` in `5145899`, `d302c06` and `e32a518` are placeholder or localhost values in `.env.example`/defaults. No rotation is needed because of the repo. Rotate the Upstash token only if it was pasted anywhere during earlier debugging.
-- [ ] **4. Review the PR** `agent/stabilize-and-clip` → `master`, and **deploy the backend before merging** (runbook). The new frontend sends `start_time`/`end_time`; the old backend would silently ignore them and download the whole video.
-- [ ] **5. Decide on capacity** (paid; I did not change anything): ≥ 512 MB RAM or a separate worker service, so the YouTube challenge solver can run. Then set `DENO_V8_FLAGS` to empty.
-- [ ] **6. Optional:** find Northflank's ingress IP range for `FORWARDED_ALLOW_IPS` (per-user rate limiting).
-- [ ] **7. Optional:** the Postgres addon is unused. Since the free plan allows one addon, a Northflank Redis addon could replace Upstash and remove the monthly command cap. That's an infrastructure decision.
+- [ ] **1. Create the Render service** from `render.yaml`, following [RENDER_DEPLOY.md](RENDER_DEPLOY.md) step 1. Paste the Upstash `rediss://` URL into `REDIS_URL`, `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND`. Nothing else needs a value.
+- [ ] **2. Verify** `/api/health` and `/api/ready` (step 2).
+- [ ] **3. Vercel:** set `NEXT_PUBLIC_API_URL` to the Render URL, then **merge the PR** so Vercel rebuilds (step 3). Merge the PR only after the backend is up: the new frontend sends `start_time`/`end_time`.
+- [ ] **4. Smoke test,** including a cold start after 20 minutes idle (step 4).
+- [ ] **5. Credentials:** no secrets are committed in the repo or its history (checked in the first pass). Rotate the Upstash token only if it was pasted somewhere during earlier debugging.
+- [ ] **6. Optional:** delete the old Northflank service and its unused Postgres addon once Render works.
 
 ## 8. Deploy runbook
 
-1. **Build and push** (from the repo root, logged in to ghcr as usual):
-   ```bash
-   # note the current digest for rollback
-   docker buildx imagetools inspect ghcr.io/devstackedmagazine/yt-downloader-api:latest | grep Digest
-   cd apps/api
-   SHA=$(git rev-parse --short HEAD)
-   docker build -t ghcr.io/devstackedmagazine/yt-downloader-api:$SHA -t ghcr.io/devstackedmagazine/yt-downloader-api:latest .
-   docker push ghcr.io/devstackedmagazine/yt-downloader-api:$SHA
-   docker push ghcr.io/devstackedmagazine/yt-downloader-api:latest
-   ```
-2. **Northflank:** set the env vars (step 1 above), then rollout restart. Lines that mean success:
-   - `Connected to rediss://…`
-   - `celery@… ready.`
-   - `Redis connection OK`
-   - `Application startup complete.`
-   - `Uvicorn running on http://0.0.0.0:8000`
-
-   Lines that mean trouble:
-   - `Redis not reachable (attempt n/5)`: URL or TLS problem.
-   - `Rejected request with Host '…'`: `TRUSTED_HOSTS` is wrong.
-   - `start.sh: a process exited`: a process crashed; check the lines above it.
-3. **Check it:**
-   - `curl https://p01--youtube-downloader--q9m2bv5gvkfq.code.run/api/health` → `{"status":"ok"}`
-   - `curl …/api/ready` → `{"status":"ok","redis":"ok"}`
-4. **Merge the PR**; Vercel deploys `master` automatically.
-5. **Smoke test** on https://dltube.vercel.app with `https://www.youtube.com/watch?v=jNQXAC9IVRw`: whole video as MP4, then "Download a section" 0:05 → 0:12 as MP4 and as MP3. Each file should play and the clips should be 7 s long. Also try `https://example.com`, which should show "That does not look like a YouTube link". Watch the logs for `n challenge solving failed` and for OOM.
-6. **Roll back:**
-   - Backend: in Northflank, point the service at the previous digest (`ghcr.io/…@sha256:<old>`) or re-tag the old digest as `latest`, push, and restart.
-   - Frontend: Vercel → Deployments → previous production deployment → "Instant Rollback", or `git revert -m 1 <merge-commit>` and push.
+See **[RENDER_DEPLOY.md](RENDER_DEPLOY.md)**: Blueprint creation, env values, verification, Vercel change, smoke test and rollback. The Northflank/ghcr runbook from the first pass is obsolete.
 
 ## 9. Risks and next steps
 
-- **Upstash quota:** idle is about 160–180k commands/month. Each download costs about 60–100 more: rate limit 2, job create ~4, Celery queue ~5, worker writes ~10–30, and the page's status polling every 1.2 s for as long as the job runs. That leaves room for roughly 3–5k downloads a month. Slower polling (e.g. 2 s) or a Northflank Redis addon would give more headroom.
-- **256 MB:** fine at idle (127 MiB), but the YouTube solver doesn't fit. Give the worker its own service or more memory before traffic grows.
+- **Upstash quota:** idle is about 160–180k commands/month. Each download costs about 60–100 more: rate limit 2, job create ~4, Celery queue ~5, worker writes ~10–30, and the page's status polling every 1.2 s for as long as the job runs. That leaves room for roughly 3–5k downloads a month. Slower polling (e.g. 2 s) would give more headroom. On Render the API makes no Redis calls while asleep, so idle use drops below the figure above.
+- **512 MB / 0.1 CPU (Render):** memory has headroom (peak 332 MiB), but CPU doesn't. One job at a time; a 30-minute section can take a long time to re-encode. Lower `MAX_DURATION_SECONDS` if users wait too long.
 - **yt-dlp updates:** YouTube breaks older versions within weeks. Dependabot already opens yt-dlp PRs; rebuild and redeploy the image whenever yt-dlp releases (`yt-dlp[default,deno]` keeps yt-dlp-ejs and Deno in sync).
 - Further ideas: an H.264 preference for MP4; marking stale jobs failed; real per-client rate limiting; a CI workflow running `pytest` and `npm run lint/typecheck/test/build`.
