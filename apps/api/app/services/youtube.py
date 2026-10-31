@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict
 from urllib.parse import urlparse
 
@@ -19,6 +20,13 @@ class YouTubeBlockedError(ValueError):
 
     def __init__(self):
         super().__init__("YouTube is blocking downloads from our server right now. Please try again later.")
+
+
+def redact(text: str) -> str:
+    """Hide proxy credentials: yt-dlp's connection errors can include the YT_PROXY URL."""
+    if settings.YT_PROXY:
+        text = text.replace(settings.YT_PROXY, "<proxy>")
+    return re.sub(r"://[^/@\s]+@", "://***@", text)
 
 
 def is_bot_check(error: Exception) -> bool:
@@ -114,7 +122,7 @@ def get_video_metadata(youtube_url: str, single: bool = False) -> Dict[str, Any]
         return metadata
 
     except Exception as e:
-        logger.warning("Failed to get video metadata: %s", e)
+        logger.warning("Failed to get video metadata: %s", redact(str(e)))
         if is_bot_check(e):
             raise YouTubeBlockedError() from e
-        raise ValueError(f"Could not fetch video information: {e}") from e
+        raise ValueError(f"Could not fetch video information: {redact(str(e))}") from e

@@ -152,6 +152,11 @@ class FailureMessageTests(unittest.TestCase):
         self.assertIn("blocking", final["error_message"])
         self.assertNotIn("cookies", final["error_message"])
 
+    def test_proxy_credentials_not_stored_in_job(self):
+        with patch.object(settings, "YT_PROXY", "http://user:s3cret@proxy.example:8080"):
+            message = self.run_failing_job(RuntimeError("Unable to connect to proxy http://user:s3cret@proxy.example:8080"))["error_message"]
+        self.assertNotIn("s3cret", message)
+
     def test_other_errors_keep_their_message(self):
         self.assertEqual(self.run_failing_job(RuntimeError("Video unavailable"))["error_message"], "Video unavailable")
 

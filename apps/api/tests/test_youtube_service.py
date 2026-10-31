@@ -91,5 +91,18 @@ class GetVideoMetadataTests(unittest.TestCase):
             self.assertEqual(base_ydl_options()["proxy"], "http://user:pw@proxy.example:8080")
 
 
+    @patch("app.services.youtube.yt_dlp.YoutubeDL")
+    def test_proxy_credentials_never_reach_the_error(self, youtube_dl):
+        proxy = "http://user:s3cret@proxy.example:8080"
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = RuntimeError(f"Unable to connect to proxy {proxy}")
+        with patch.object(settings, "YT_PROXY", proxy), self.assertRaises(ValueError) as raised, self.assertLogs("app.services.youtube") as logs:
+            get_video_metadata("https://www.youtube.com/watch?v=v")
+        self.assertNotIn("s3cret", str(raised.exception))
+        self.assertNotIn("s3cret", "".join(logs.output))
+        # Any other URL with credentials is masked too.
+        from app.services.youtube import redact
+        self.assertEqual(redact("via https://a:b@other.example/x"), "via https://***@other.example/x")
+
+
 if __name__ == "__main__":
     unittest.main()
