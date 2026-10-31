@@ -8,5 +8,3 @@ redis==5.3.1
 # "default" pulls yt-dlp-ejs/requests/certifi etc.; "deno" installs the Deno JS runtime
 # that yt-dlp needs for full YouTube support. Update often: YouTube breaks old releases.
 yt-dlp[default,deno]==2026.10.26
-# yt-dlp plugin that fetches YouTube PO tokens via the bgutil server sources in the image.
-bgutil-ytdlp-pot-provider==2.0.2
