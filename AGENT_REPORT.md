@@ -2,7 +2,9 @@
 
 Branch: `agent/stabilize-and-clip` (from `master` @ `1e0e310`). Date: 2026-10-30. No secrets appear anywhere in this report.
 
-## 0. Follow-up (2026-10-31): moving the API to Render's free tier
+## 0. Follow-up (2026-10-31): moving the API to Render. Production results are in [PRODUCTION_TEST_REPORT.md](PRODUCTION_TEST_REPORT.md)
+
+### Render migration's free tier
 
 **Target:** Render free web service (512 MB RAM, 0.1 CPU, Docker from GitHub, sleeps after 15 min idle, disk wiped on restart). Vercel and Upstash are unchanged. Deploy steps are in **[RENDER_DEPLOY.md](RENDER_DEPLOY.md)**. Six of the eight allowed YouTube requests were used.
 
@@ -35,18 +37,13 @@ Branch: `agent/stabilize-and-clip` (from `master` @ `1e0e310`). Date: 2026-10-30
   - Fix: status now returns `failed`, "This file has expired. Please convert it again."
 - **Host check vs Render.** The `onrender.com` host is now trusted automatically from Render's `RENDER_EXTERNAL_HOSTNAME`, so nobody has to guess the service name. `/api/health` skips the Host check, because Render's health checker may not send the public host. The endpoint returns no data.
 
-**Rate limiting** now keys on the **last** `X-Forwarded-For` entry, the one Render's proxy appends, and falls back to the socket IP when the header is absent. Tests cover:
-- per-IP budgets
-- a client prepending fresh fake IPs on every request is still limited (the "can't bypass" test)
-- the socket-IP fallback
-
-Limit: if the API port is reachable **without** a proxy that appends to the header, a client could set the last entry itself. On Render it isn't reachable that way, and README now says so for self-hosting.
+**Rate limiting:** keying on the last `X-Forwarded-For` entry turned out **wrong in production** (see [PRODUCTION_TEST_REPORT.md](PRODUCTION_TEST_REPORT.md)). Behind Render, Cloudflare puts its own edge IP last, so every request got a fresh key and nothing was ever limited. The fix on branch `agent/prod-fixes` (not yet deployed) keys on the header named by `CLIENT_IP_HEADER` (`cf-connecting-ip` in `render.yaml`) and falls back to the socket IP.
 
 **Render readiness:**
 - uvicorn listens on `${PORT:-8000}`, and the Docker HEALTHCHECK uses `PORT` too.
 - `render.yaml` defines one free Docker web service in Frankfurt with health check `/api/health` and every setting the app reads.
   - `REDIS_URL`, `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` use `sync: false`, so no values are committed.
-  - Context and Dockerfile paths are repo-root relative, per Render's spec.
+  - Context and Dockerfile paths: my first version made them repo-root relative, per Render's spec. That was wrong in practice, and Fatlum corrected them to rootDir-relative (`ca97a0d`).
 - Nothing needs files to survive a restart:
   - Downloads live only for one job.
   - `tmp_downloads` is created in the image and per job.
@@ -195,7 +192,7 @@ Commits: `6d62a43` hygiene · `2e52ed9` image/start · `78776ee` hardening + sec
 | Severity | Issue | Recommendation |
 |---|---|---|
 | ~~High~~ resolved | 256 MB was too small for yt-dlp's YouTube challenge solver (~215 MB). | **Resolved by Render's 512 MB** (section 0): peak 332 MiB with the solver uncapped. |
-| ~~Medium~~ fixed | Rate limiting grouped all users behind the proxy IP. | **Fixed** (section 0): keyed on the last `X-Forwarded-For` entry. |
+| ~~Medium~~ fixed | Rate limiting did not identify clients behind the proxy. | Fix in `agent/prod-fixes` after production testing: keyed on `CF-Connecting-IP` (`CLIENT_IP_HEADER`). Not deployed yet. |
 | Medium | If the container restarts mid-job, the job stays "processing" until its 24 h TTL, and the page keeps polling (Redis commands). | Mark stale jobs failed after `task_time_limit`, and stop polling after N minutes. |
 | Medium | API and worker share 0.1 vCPU, so the API is slow while ffmpeg runs. | Separate worker service. |
 | Low | Full MP4s can be AV1 ("best regardless of codec"), which some players (older iOS/QuickTime) can't play. Existing behavior. | Prefer `vcodec:h264` via `format_sort`. |
