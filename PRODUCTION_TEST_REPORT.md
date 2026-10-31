@@ -2,6 +2,97 @@
 
 Date: 2026-10-31, 22:13–22:37 UTC. Target: `https://dltube-api.onrender.com` and `https://dltube.vercel.app`. Tools: curl from one residential client. No logins, no setting changes, no deploys.
 
+## What Fatlum does next (in order)
+
+1. **Review and merge PR [#28](https://github.com/devstackedmagazine/youtube-downloader/pull/28)** (`agent/home-hosting` → `agent/stabilize-and-clip`). It adds home hosting and the friendly error messages.
+2. **Host the API at home** by following [HOME_HOSTING.md](HOME_HOSTING.md). This is the only free fix for YouTube's block (round 2, part A). In short:
+   - Run the Docker Compose file.
+   - Install Tailscale and run `sudo tailscale funnel --bg http://127.0.0.1:8000`.
+   - Set `TRUSTED_HOSTS` to the ts.net host.
+   - Change Vercel's `NEXT_PUBLIC_API_URL` and redeploy.
+3. **Suspend the Render service** (Render → `dltube-api` → **Settings** → **Suspend Web Service**). Render and home share the Upstash queue, so only one backend may run.
+4. **Verify** with HOME_HOSTING.md step 7: the 31-request check, then whole video, section MP4 and section MP3 on dltube.vercel.app.
+5. **Merge PR #27** (`agent/stabilize-and-clip` → `master`), so Vercel production gets the section feature, the wake-up retry and the friendly errors. The current production frontend is still the old master build.
+6. Optional, later: the remaining Dependabot items (round 2, part C), all dev-only or base-image tooling.
+
+Nothing has to be done in Render's **Environment**: `CLIENT_IP_HEADER` reached the service (part A.2).
+
+## Round 2 (2026-10-31, 22:39–22:58 UTC)
+
+Rules this round:
+- No paid services and no Google cookies, so `YT_PROXY` is unused.
+- I could merge `agent/prod-fixes` and push the branch Render deploys.
+- Production requests used: 2 of 10 metadata lookups, and 1 of 4 download attempts (which created no job).
+- The rate-limit check ran twice: the first run never reached the app (see A.2).
+
+### Part A: deploy the fixes, try the free PO-token plugin
+
+| Step | Result |
+|---|---|
+| A.1 merge + deploy | `agent/prod-fixes` fast-forwarded into `agent/stabilize-and-clip` (no conflicts; it was a descendant), pushed 22:39:56. Live by 22:41:10: metadata now returns **503** `{"detail":"YouTube is blocking downloads from our server right now. Please try again later."}` (2.8 s) instead of yt-dlp's text. `/api/health` now also reports the deployed commit (`{"status":"ok","commit":"…"}`), so deploys can be confirmed. |
+| A.2 rate limit | **PASS.** Run 1 sent a fake `X-Forwarded-For` **and** a fake `CF-Connecting-IP`: all 31 got **403 from Cloudflare** (`error code: 1000`) and never reached the app. So Cloudflare refuses client-sent `CF-Connecting-IP`, and that header can't be spoofed. Run 2 sent only a fake `X-Forwarded-For`: **30 × 400, then 429**, plus one more request → 429 `{"detail":"Too many requests. Please try again shortly."}`. `CLIENT_IP_HEADER` reached the service, and spoofing doesn't bypass it. |
+| A.3 PO-token plugin | `bgutil-ytdlp-pot-provider==2.0.2` (PyPI plugin) plus the server sources pinned to commit `26475e9` (tag 2.0.2), in **Deno script mode**. Deno is already in the image, so there's no extra long-running process. Node is only used in a build stage for `npm ci --omit=dev`. Image 1.08 → 1.20 GB. Locally under `--memory=512m`, the plugin generated a token (`[pot:bgutil:script-deno] … Retrieved a gvs PO Token`) in a 9 s run, peaking at 262 MiB. Deployed as `f262c47`, with health commit `e94ba49` live at 22:47:09. |
+| A.4 retry | **Still blocked.** Metadata 22:47:39: 503 "YouTube is blocking…" in 3.1 s. Section 5→12 s MP4 POST at 22:47:54: same 503 in 1.7 s; no job was created, because the up-front lookup fails. The API returns this message only when yt-dlp's error contains "confirm you" and "not a bot", so YouTube's error is still **"Sign in to confirm you're not a bot"**. The raw line is only in Render's logs, which I can't read. PO tokens don't lift an IP-reputation block. **Reverted** in a new commit (`f164f95`), live at 22:49:01; `/api/ready` 200, production healthy. Memory and timings for a working job couldn't be measured on Render. |
+
+### Part B: home hosting (PR #28, branch `agent/home-hosting`)
+
+- `docker-compose.home.yml`:
+  - the API image, bound to `127.0.0.1:8000`, `restart: unless-stopped`
+  - limits: 1 GB, 2 CPUs, 256 pids
+  - `no-new-privileges` and log rotation
+  - env from `apps/api/.env.home` (gitignored); `apps/api/.env.home.example` has every variable
+- **Client IP behind Funnel:** tailscaled **replaces** `X-Forwarded-For` with the public client address, taken from the relay's `Tailscale-Ingress-Src` (`ipn/ipnlocal/serve.go`, `addProxyForwardedHeaders`). So `CLIENT_IP_HEADER=x-forwarded-for`, with tests. This is safe only because the port is bound to 127.0.0.1.
+- **Frontend:**
+  - no response, or a proxy's non-JSON 502–504 → "Our download server isn't reachable right now…"
+  - the API's YouTube-blocked 503 → "YouTube is blocking our download server at the moment… Your link is fine…"
+  - status polling now shows the reason instead of a fixed text
+- **Local run** of `docker compose -f docker-compose.home.yml`. A scratchpad override swapped Upstash for a local Redis; the compose file itself was unchanged.
+  - Health and ready returned 200 within 5 s.
+  - The port listens on `127.0.0.1:8000` only.
+  - The ts.net Host is accepted (200) and `evil.example` is rejected (400).
+  - Requests carried the ts.net Host and `X-Forwarded-For` the way Funnel sends them:
+
+  | Job (19 s video) | Job time | Output | Size | Filename |
+  |---|---|---|---|---|
+  | metadata | 1.9 s | "Me at the zoo", 19 s | | |
+  | section 5→12 s MP4 | 6.6 s | 7.000 s, H.264 + AAC | 256,268 B | `Me at the zoo [00m05s-00m12s].mp4` |
+  | section 5→12 s MP3 | 5.7 s | 7.032 s, MP3 | 169,388 B | `Me at the zoo [00m05s-00m12s].mp3` |
+
+  - The rate-limit key was the forwarded IP (`download:rate:198.51.100.7`).
+  - The cgroup peak was 712 MiB of 1 GB (page cache included), with 0 OOM kills. The stack was stopped afterwards.
+- **Checks:** backend 92 passed; web 13 tests, `tsc`, lint (1 existing warning), `next build` all pass.
+- I did not install Tailscale or run sudo. Funnel itself is untested; HOME_HOSTING.md step 7 covers it.
+
+### Part C: Dependabot
+
+The 28 open alerts are against `master`'s manifests. On this branch (`7b300e6`, pushed; only files outside Render's `rootDir`, so no Render rebuild):
+
+| | Before | After |
+|---|---|---|
+| npm critical | 2 (next ×5 advisories, dompurify) | **0** |
+| npm high | 7 (next, sharp, nanoid, js-yaml, brace-expansion, browserslist, source-map-js, zod) | **0** |
+| npm moderate | 20 | 16 |
+| Python app deps (`pip-audit -r requirements.txt` in the image) | the `requests` alerts apply to master's old pin only | **0**; the image has `requests` 2.34.2 |
+
+What changed:
+- `next` `^16.4.3` (installed 16.4.3), `eslint-config-next` `16.4.3`
+- the `postcss` override 8.5.18 → 8.5.23; the old override pinned a **vulnerable** version
+- `npm audit fix` without `--force`: no major bumps
+
+A clean `npm ci` from the new lockfile works; web tests, `tsc`, lint and `next build` pass.
+
+**Remaining:**
+
+| Severity | Package | Why it remains | Fix needs |
+|---|---|---|---|
+| moderate ×16 | `minimatch` <11.0.1 (GHSA-g3hv-75wg-m249, ReDoS), pulled in by `eslint` 9 and the whole `eslint-config-next` / `typescript-eslint` / eslint-plugin chain | Dev-only (lint), not in the build or at runtime. npm's suggested "fix" is a downgrade to eslint 4 / eslint-config-next 0.2.4. | eslint 10 (major), once `eslint-config-next` supports it |
+| PYSEC ×6 | `pip` 24.0 | From the `python:3.11-slim` base image; build tool, not used by the app | pip 26 (major), or a newer base image |
+| PYSEC/GHSA ×2 | `setuptools` 79.0.1 | Same | setuptools 84 (major) |
+
+Dependabot keeps showing the 28 alerts until `master` gets these changes (PR #27).
+
+## Round 1
+
 ## Summary
 
 - **Blocker: YouTube refuses Render's IP.** Every lookup for both test videos fails with *"Sign in to confirm you're not a bot"*. No download can run in production. This is not a code bug. YouTube blocks many datacenter IPs, and Render's shared egress IP is one of them. Fixing it needs a decision from Fatlum (see "Fixes").
@@ -68,7 +159,7 @@ I couldn't see the headers server-side, because that would need a deploy. The ex
 
 ## Fixes and what Fatlum has to do
 
-### A. Deploy the two code fixes (rate limit, clean bot-check error)
+### A. Deploy the two code fixes (rate limit, clean bot-check error). Done in round 2.
 
 The fixes are on **`agent/prod-fixes`**, which branches from `agent/stabilize-and-clip`. They aren't pushed to the branch Render deploys from, because that would auto-deploy them.
 
@@ -85,7 +176,7 @@ The fixes are on **`agent/prod-fixes`**, which branches from `agent/stabilize-an
    - If it still never shows 429, `CF-Connecting-IP` isn't reaching the app. Then try `true-client-ip`, or ask Render support which header carries the client IP.
    - The fake `CF-Connecting-IP` above also proves Cloudflare overwrites client values. If the run gives 31 × `400`, Cloudflare is passing client values through and must not be trusted.
 
-### B. Get past YouTube's block (pick one; each needs Fatlum's decision)
+### B. Get past YouTube's block (superseded: no paid services or cookies; tried the free PO-token plugin in round 2, then chose home hosting)
 
 | Option | Cost / risk | Work |
 |---|---|---|
