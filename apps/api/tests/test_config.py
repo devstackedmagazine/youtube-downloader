@@ -44,8 +44,13 @@ def test_cors_regex_disabled_by_default():
 
 
 def test_trusted_hosts_always_include_local_hosts():
-    hosts = make(TRUSTED_HOSTS="p01--x.code.run").trusted_hosts
-    assert hosts == ["p01--x.code.run", "localhost", "127.0.0.1"]
+    hosts = make(TRUSTED_HOSTS="api.example.com").trusted_hosts
+    assert hosts == ["api.example.com", "localhost", "127.0.0.1"]
+
+
+def test_trusted_hosts_include_render_hostname():
+    hosts = make(TRUSTED_HOSTS="api.example.com", RENDER_EXTERNAL_HOSTNAME="dltube-api.onrender.com").trusted_hosts
+    assert hosts == ["api.example.com", "dltube-api.onrender.com", "localhost", "127.0.0.1"]
 
 
 def test_trusted_hosts_wildcard_or_empty_allows_any():

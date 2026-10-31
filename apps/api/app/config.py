@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: str = ""
     # Comma-separated Host headers accepted by the API ("*" disables the check).
     TRUSTED_HOSTS: str = "localhost,127.0.0.1"
+    # Set by Render to the service's onrender.com host; always trusted when present.
+    RENDER_EXTERNAL_HOSTNAME: str = ""
 
     DOWNLOAD_DIR: str = "tmp_downloads"
     MAX_PLAYLIST_ITEMS: int = 100
@@ -78,7 +80,7 @@ class Settings(BaseSettings):
         if not hosts or "*" in hosts:
             return ["*"]
         # Local hosts are always allowed so container health checks keep working.
-        return list(dict.fromkeys(hosts + ["localhost", "127.0.0.1"]))
+        return list(dict.fromkeys(hosts + split_csv(self.RENDER_EXTERNAL_HOSTNAME) + ["localhost", "127.0.0.1"]))
 
     @property
     def yt_player_clients(self) -> list[str]:

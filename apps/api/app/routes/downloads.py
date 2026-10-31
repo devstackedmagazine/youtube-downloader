@@ -32,16 +32,26 @@ def optional_float(value: str | None) -> float | None:
     return float(value) if value else None
 
 
-async def enforce_rate_limit(request: Request, redis: Redis = Depends(get_redis), settings: Settings = Depends(get_settings)):
-    """Bound expensive anonymous metadata and conversion requests.
+def client_ip(request: Request) -> str:
+    """The client address as seen by the platform proxy.
 
-    Use the direct peer address instead of client-controlled forwarding headers.
-    Deployments behind a proxy should configure the proxy/server to preserve the
-    real client address before enabling proxy header handling.
+    Render's proxy appends the address it received the connection from to
+    X-Forwarded-For, so only the last entry is trustworthy; anything before it
+    may have been sent by the client. Without the header (local runs) use the
+    socket peer. Only correct behind a proxy that appends: exposed directly, a
+    client could set the header itself.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[-1].strip()
+    return forwarded or (request.client.host if request.client else "unknown")
+
+
+async def enforce_rate_limit(request: Request, redis: Redis = Depends(get_redis), settings: Settings = Depends(get_settings)):
+    """Bound expensive anonymous metadata and conversion requests, per client IP.
+
     If Redis is unreachable the request is refused with 503 (fail closed) rather
     than letting unbounded yt-dlp/ffmpeg work through.
     """
-    client = request.client.host if request.client else "unknown"
+    client = client_ip(request)
     key = f"download:rate:{client}"
     try:
         count = await redis.incr(key)
@@ -162,15 +172,19 @@ async def get_download_status(download_id: uuid.UUID, redis: Redis = Depends(get
     if not job:
         raise HTTPException(status_code=404, detail="Download not found")
 
-    download_url = None
-    if job.get("status") == "completed" and job.get("file_path") and os.path.isfile(job["file_path"]):
-        download_url = f"/api/downloads/{download_id}/file"
+    status, error_message, download_url = job.get("status", "processing"), job.get("error_message") or None, None
+    if status == "completed":
+        if job.get("file_path") and os.path.isfile(job["file_path"]):
+            download_url = f"/api/downloads/{download_id}/file"
+        else:
+            # The disk is wiped when the server restarts or sleeps; the job record in Redis outlives it.
+            status, error_message = "failed", "This file has expired. Please convert it again."
 
     return JobResponse(
         id=str(download_id),
-        status=job.get("status", "processing"),
+        status=status,
         progress=int(float(job.get("progress") or 0)),
-        error_message=job.get("error_message") or None,
+        error_message=error_message,
         download_link=download_url,
         start_time=optional_float(job.get("start_time")),
         end_time=optional_float(job.get("end_time")),

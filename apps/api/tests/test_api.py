@@ -44,7 +44,11 @@ def test_ready_reports_redis_failure(client, fake_redis):
 # --- middleware -----------------------------------------------------------------
 
 def test_untrusted_host_rejected(client):
-    assert client.get("/api/health", headers={"host": "evil.example"}).status_code == 400
+    assert client.get("/api/ready", headers={"host": "evil.example"}).status_code == 400
+
+
+def test_health_ignores_host_so_platform_checks_pass(client):
+    assert client.get("/api/health", headers={"host": "10.0.0.7:10000"}).status_code == 200
 
 
 def test_cors_allows_frontend_only(client):
@@ -86,6 +90,28 @@ def test_rate_limit(client, yt):
     response = client.get("/api/metadata", params={"url": URL})
     assert response.status_code == 429
     assert "detail" in response.json()
+
+
+def test_rate_limit_keys_on_last_forwarded_ip(client, yt):
+    for _ in range(30):
+        assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "203.0.113.5"}).status_code == 200
+    assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "203.0.113.5"}).status_code == 429
+    # A different client (different proxy-appended IP) has its own budget.
+    assert client.get("/api/metadata", params={"url": URL}, headers={"x-forwarded-for": "198.51.100.9"}).status_code == 200
+
+
+def test_spoofed_forwarded_for_cannot_bypass_limit(client, yt):
+    # The client prepends a fresh fake IP each time; the proxy appends the real one last.
+    for i in range(30):
+        headers = {"x-forwarded-for": f"10.0.0.{i}, 203.0.113.5"}
+        assert client.get("/api/metadata", params={"url": URL}, headers=headers).status_code == 200
+    headers = {"x-forwarded-for": "10.9.9.9, 192.0.2.1, 203.0.113.5"}
+    assert client.get("/api/metadata", params={"url": URL}, headers=headers).status_code == 429
+
+
+def test_rate_limit_falls_back_to_socket_ip(client, yt, fake_redis):
+    client.get("/api/metadata", params={"url": URL})
+    assert fake_redis.data["download:rate:testclient"] == 1
 
 
 def test_rate_limit_redis_down_is_503(client, yt, fake_redis):
@@ -239,3 +265,13 @@ def test_file_served_with_range_filename(client, fake_redis, tmp_path, monkeypat
     assert response.status_code == 200
     assert response.headers["content-type"] == "video/mp4"
     assert "Me%20at%20the%20zoo%20%5B00m05s-00m12s%5D.mp4" in response.headers["content-disposition"]
+
+
+def test_completed_job_whose_file_is_gone_reports_expired(client, fake_redis, tmp_path):
+    # Render wipes the disk on restart/sleep while the Redis job record survives.
+    job_id = "6f1f8a43-6f0b-4b5e-8f8e-2d7c8b7f0c11"
+    fake_redis.data[f"download:job:{job_id}"] = {"status": "completed", "progress": "100", "file_path": str(tmp_path / "gone.mp4")}
+    body = client.get(f"/api/download/{job_id}/status").json()
+    assert body["status"] == "failed"
+    assert body["download_link"] is None
+    assert "expired" in body["error_message"]

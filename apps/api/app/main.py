@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -47,9 +48,15 @@ async def lifespan(app: FastAPI):
 
 
 class LoggingTrustedHostMiddleware(TrustedHostMiddleware):
-    """Starlette's TrustedHostMiddleware, plus a log line saying which Host was rejected."""
+    """Starlette's TrustedHostMiddleware, plus a log line saying which Host was rejected.
+
+    /api/health is exempt: the platform's health checker may not send the public Host.
+    """
 
     async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"] == "/api/health":
+            await self.app(scope, receive, send)
+            return
         if scope["type"] in ("http", "websocket") and not self.allow_any:
             host = Headers(scope=scope).get("host", "").split(":")[0]
             if not any(host == pattern or (pattern.startswith("*") and host.endswith(pattern[1:])) for pattern in self.allowed_hosts):
@@ -121,4 +128,4 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), reload=True)
