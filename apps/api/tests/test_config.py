@@ -34,8 +34,8 @@ def test_plain_redis_has_no_ssl():
 def test_cors_origins_include_frontend_production_and_localhost():
     settings = make(FRONTEND_URL="https://a.example/, https://b.example")
     assert settings.cors_origins[:2] == ["https://a.example", "https://b.example"]
-    assert "https://dltube.vercel.app" in settings.cors_origins
-    assert "http://localhost:3000" in settings.cors_origins
+    # Set comparison, not a substring check (CodeQL py/incomplete-url-substring-sanitization).
+    assert {"https://dltube.vercel.app", "http://localhost:3000"} <= set(settings.cors_origins)
     assert "*" not in settings.cors_origins
 
 
