@@ -81,6 +81,7 @@ interface SidecarSpec {
 
 export interface About {
   version: string;
+  license: string;
   notices: string;
   sidecars: Record<string, SidecarSpec | string>;
 }

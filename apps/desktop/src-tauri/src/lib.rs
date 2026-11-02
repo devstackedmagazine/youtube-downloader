@@ -15,6 +15,7 @@ use tauri_plugin_opener::OpenerExt;
 /// GitHub repo whose releases are checked for app updates.
 const REPO: &str = "devstackedmagazine/youtube-downloader";
 const NOTICES: &str = include_str!("../../THIRD_PARTY_NOTICES.md");
+const LICENSE: &str = include_str!("../../../../LICENSE");
 const SIDECARS: &str = include_str!("../../sidecars.json");
 const MAX_HISTORY: usize = 500;
 
@@ -359,6 +360,7 @@ fn open_release(app: AppHandle, url: String) -> Result<(), String> {
 #[derive(Serialize)]
 struct About {
     version: String,
+    license: &'static str,
     notices: &'static str,
     sidecars: serde_json::Value,
 }
@@ -367,6 +369,7 @@ struct About {
 fn about(app: AppHandle) -> About {
     About {
         version: app.package_info().version.to_string(),
+        license: LICENSE,
         notices: NOTICES,
         sidecars: serde_json::from_str(SIDECARS).unwrap_or_default(),
     }

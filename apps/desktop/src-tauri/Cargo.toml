@@ -3,6 +3,7 @@ name = "dltube"
 version = "0.1.0"
 description = "Download YouTube videos, sections and playlists as MP4 or MP3 on your own computer"
 edition = "2021"
+license = "MIT"
 publish = false
 
 [lib]

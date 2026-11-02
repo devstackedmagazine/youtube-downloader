@@ -1,5 +1,7 @@
 # Third-party notices
 
+dltube itself is free software under the MIT License, copyright (c) 2026 Fatlum Gerxhaliu (full text in About → License, and in `LICENSE` at the root of the source repository). The MIT License covers dltube's own code only; the bundled programs below keep their own licenses.
+
 dltube bundles the following programs. They are separate executables that dltube runs as child processes; each keeps its own license. Exact versions are pinned in `apps/desktop/sidecars.json`.
 
 ## yt-dlp

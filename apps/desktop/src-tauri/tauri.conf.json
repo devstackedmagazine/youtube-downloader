@@ -30,6 +30,7 @@
     "active": true,
     "targets": ["deb", "appimage", "nsis"],
     "category": "Video",
+    "license": "MIT",
     "shortDescription": "YouTube to MP4/MP3, on your own computer",
     "longDescription": "Paste a YouTube link and download the whole video, a section of it, or a playlist as MP4 or MP3. Everything runs on your computer with bundled yt-dlp, ffmpeg and Deno.",
     "copyright": "dltube contributors",

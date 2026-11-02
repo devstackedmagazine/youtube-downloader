@@ -2,6 +2,7 @@
 name = "dltube-core"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 publish = false
 description = "yt-dlp driving logic for the dltube desktop app (no Tauri dependency, so it is testable headless)"
 
