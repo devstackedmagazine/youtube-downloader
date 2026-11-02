@@ -50,7 +50,7 @@ export default function DownloadAppPage() {
             <a href={desktopDownloads.deb} className="btn-outline inline-flex h-14 items-center justify-center rounded-full border px-7 font-semibold">Linux .deb <span className="ml-3">↓</span></a>
           </div>
           <p className="mt-6 text-sm text-[#8b887f]">
-            About 220–280 MB download (it includes yt-dlp, FFmpeg and Deno), about 500 MB installed.{" "}
+            Download size: about 145 MB for Windows, 220–275 MB for Linux (it includes yt-dlp, FFmpeg and Deno). About 500 MB installed.{" "}
             <a href={desktopDownloads.checksums} className="underline underline-offset-4 hover:text-[#ff6b35]">SHA256SUMS</a> ·{" "}
             <a href={desktopDownloads.releases} className="underline underline-offset-4 hover:text-[#ff6b35]">All releases</a>
           </p>
