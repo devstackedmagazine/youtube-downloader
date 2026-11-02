@@ -59,6 +59,9 @@ jobs:
       - name: Rust fmt, clippy, tests
         working-directory: apps/desktop/src-tauri
         run: |
+          # tauri-build only checks that the bundled tools exist; the build job fetches the real ones.
+          mkdir -p binaries
+          for t in yt-dlp ffmpeg ffprobe deno; do touch "binaries/$t-x86_64-unknown-linux-gnu"; done
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo test --workspace --locked
