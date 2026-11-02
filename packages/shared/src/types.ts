@@ -3,12 +3,17 @@
 export type VideoFormat = "mp4" | "mp3";
 export type DownloadScope = "single" | "playlist";
 
-export type QualityMp4 = "1440p" | "1080p" | "720p" | "480p" | "360p";
+/** Heights prefer H.264 + AAC (plays everywhere); "best" takes any codec (often AV1/VP9). */
+export type QualityMp4 = "1080p" | "720p" | "480p" | "360p" | "best";
 export type QualityMp3 = "320kbps" | "256kbps" | "128kbps";
 
 export type DownloadQuality = QualityMp4 | QualityMp3;
 
-export const MP4_QUALITIES: QualityMp4[] = ["1440p", "1080p", "720p", "480p", "360p"];
+export const MP4_QUALITIES: QualityMp4[] = ["1080p", "720p", "480p", "360p", "best"];
+
+export const QUALITY_LABELS: Partial<Record<DownloadQuality, string>> = {
+  best: "Best quality (may be AV1/VP9, may not play in older players)",
+};
 export const MP3_QUALITIES: QualityMp3[] = ["320kbps", "256kbps", "128kbps"];
 
 export interface VideoMetadata {

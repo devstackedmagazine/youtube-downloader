@@ -43,15 +43,17 @@ pub fn metadata(tools: &Tools, raw_url: &str, single: bool) -> Result<Vec<String
     Ok(args)
 }
 
-fn mp4_height(quality: &str) -> Result<u32, String> {
-    match quality {
-        "1440p" => Ok(1440),
-        "1080p" => Ok(1080),
-        "720p" => Ok(720),
-        "480p" => Ok(480),
-        "360p" => Ok(360),
-        _ => Err(format!("Unsupported MP4 quality: {quality}")),
-    }
+/// MP4 height cap; None = "best" (any height and codec).
+fn mp4_height(quality: &str) -> Result<Option<u32>, String> {
+    let height = match quality {
+        "best" => return Ok(None),
+        "1080p" => 1080,
+        "720p" => 720,
+        "480p" => 480,
+        "360p" => 360,
+        _ => return Err(format!("Unsupported MP4 quality: {quality}")),
+    };
+    Ok(Some(height))
 }
 
 fn mp3_bitrate(quality: &str) -> Result<&'static str, String> {
@@ -63,19 +65,17 @@ fn mp3_bitrate(quality: &str) -> Result<&'static str, String> {
     }
 }
 
-/// Format selection. Whole MP4s get the best stream like the web app (audio fixed to AAC
-/// afterwards). Sections prefer H.264 + AAC, since cutting re-encodes with libx264 anyway.
-pub fn format_selector(format: Format, quality: &str, is_clip: bool) -> Result<String, String> {
-    Ok(match format {
-        Format::Mp3 => "bestaudio/best".into(),
-        Format::Mp4 => {
-            let h = mp4_height(quality)?;
-            if is_clip {
-                format!("bv*[height<={h}][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[height<={h}]+ba/b[height<={h}]/b")
-            } else {
-                format!("bv*[height<={h}]+ba/b[height<={h}]/b")
-            }
-        }
+/// Format selection. MP4 prefers H.264 + AAC (plays everywhere, including Windows 10's built-in
+/// player) and falls back to other codecs only if H.264 is missing. "best" takes the best stream
+/// in any codec (often AV1/VP9). MP4 audio that isn't AAC is re-encoded afterwards (runner.rs).
+pub fn format_selector(format: Format, quality: &str) -> Result<String, String> {
+    Ok(match (format, mp4_height(quality)) {
+        (Format::Mp3, _) => "bestaudio/best".into(),
+        (Format::Mp4, Ok(None)) => "bv*+ba/b".into(),
+        (Format::Mp4, Ok(Some(h))) => format!(
+            "bv*[height<={h}][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[height<={h}][vcodec^=avc1]+ba/bv*[height<={h}]+ba/b[height<={h}]/b"
+        ),
+        (Format::Mp4, Err(e)) => return Err(e),
     })
 }
 
@@ -103,7 +103,7 @@ pub fn download(tools: &Tools, req: &Request, work_dir: &Path) -> Result<Vec<Str
         // --no-playlist doesn't stop a pure playlist URL; cap single jobs at one item.
         args.extend(["--no-playlist", "--abort-on-error", "--playlist-end", "1"].map(String::from));
     }
-    args.extend(["-f".into(), format_selector(req.format, &req.quality, is_clip)?]);
+    args.extend(["-f".into(), format_selector(req.format, &req.quality)?]);
     match req.format {
         Format::Mp3 => args
             .extend(["-x", "--audio-format", "mp3", "--audio-quality", mp3_bitrate(&req.quality)?].map(String::from)),
@@ -177,6 +177,8 @@ mod tests {
         assert!(download(&tools(), &req(Format::Mp4, "720p --exec x"), Path::new("/w")).is_err());
         assert!(download(&tools(), &req(Format::Mp3, "720p"), Path::new("/w")).is_err());
         assert!(download(&tools(), &req(Format::Mp4, "320kbps"), Path::new("/w")).is_err());
+        assert!(download(&tools(), &req(Format::Mp4, "1440p"), Path::new("/w")).is_err());
+        assert!(download(&tools(), &req(Format::Mp3, "best"), Path::new("/w")).is_err());
     }
 
     #[test]
@@ -194,12 +196,22 @@ mod tests {
     #[test]
     fn whole_mp4() {
         let args = download(&tools(), &req(Format::Mp4, "1080p"), Path::new("/tmp/w")).unwrap();
-        assert_eq!(value_after(&args, "-f"), Some("bv*[height<=1080]+ba/b[height<=1080]/b"));
+        assert_eq!(
+            value_after(&args, "-f"),
+            Some("bv*[height<=1080][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[height<=1080][vcodec^=avc1]+ba/bv*[height<=1080]+ba/b[height<=1080]/b")
+        );
         assert_eq!(value_after(&args, "--merge-output-format"), Some("mp4"));
         assert_eq!(value_after(&args, "-o"), Some("media.%(ext)s"));
         assert_eq!(value_after(&args, "-P"), Some("/tmp/w"));
         assert_eq!(value_after(&args, "--playlist-end"), Some("1"));
         assert!(!args.iter().any(|a| a == "--download-sections"));
+    }
+
+    #[test]
+    fn best_quality_takes_any_codec() {
+        let args = download(&tools(), &req(Format::Mp4, "best"), Path::new("/w")).unwrap();
+        assert_eq!(value_after(&args, "-f"), Some("bv*+ba/b"));
+        assert_eq!(value_after(&args, "--merge-output-format"), Some("mp4"));
     }
 
     #[test]

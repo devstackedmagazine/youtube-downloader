@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { checkClip, formatTime } from "@dltube/shared/time";
-import { type DownloadQuality, MP3_QUALITIES, MP4_QUALITIES, type VideoFormat } from "@dltube/shared/types";
+import { type DownloadQuality, MP3_QUALITIES, MP4_QUALITIES, QUALITY_LABELS, type VideoFormat } from "@dltube/shared/types";
 import { api, errorText, type Metadata } from "../api";
 import SectionPicker from "./SectionPicker";
 
@@ -148,8 +148,9 @@ export default function DownloadForm() {
                 <label className="mt-5 block text-sm font-semibold" htmlFor="quality">Quality</label>
                 <select id="quality" value={quality} onChange={(event) => setQuality(event.target.value as DownloadQuality)}
                   className="mt-2 h-12 w-full rounded-xl border border-[#11110f]/15 bg-[#f6f2e9] px-4 font-semibold outline-none focus:border-[#ff6b35]">
-                  {(format === "mp4" ? MP4_QUALITIES : MP3_QUALITIES).map((item) => <option key={item} value={item}>{item}</option>)}
+                  {(format === "mp4" ? MP4_QUALITIES : MP3_QUALITIES).map((item) => <option key={item} value={item}>{QUALITY_LABELS[item] ?? item}</option>)}
                 </select>
+                {format === "mp4" && <p className="mt-2 text-xs text-[#77736a]">{quality === "best" ? "Highest resolution YouTube has, often AV1 or VP9. Older players and Windows' built-in player may not play it." : "H.264 + AAC when YouTube has it, so it plays in any player."}</p>}
               </div>
               <div>
                 {blocker && !useSection && <p className="mt-5 text-sm font-medium text-[#c33f1a]">{blocker}</p>}
