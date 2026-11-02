@@ -24,6 +24,7 @@ export default function Home() {
               <Link href="/download" className="btn-signal inline-flex h-14 items-center justify-center rounded-full px-7 font-semibold hover:-translate-y-1">Paste a link <span className="ml-3 text-lg">↗</span></Link>
               <Link href="#capabilities" className="btn-outline inline-flex h-14 items-center justify-center rounded-full border px-7 font-semibold">See what it does</Link>
             </div>
+            <p className="mt-5 text-sm text-[#bdb9af]">Website blocked by YouTube? <Link href="/download-app" className="font-semibold text-[#f6f2e9] underline underline-offset-4 hover:text-[#ff6b35]">Get the free Windows / Linux app</Link></p>
           </div>
           <div className="relative hidden h-80 lg:block">
             <div className="surface-hover surface-hover--dark absolute right-0 top-0 w-64 rotate-6 overflow-hidden rounded-[2rem] border border-white/20 bg-[#2c2b27] p-3 shadow-2xl shadow-black/30">
