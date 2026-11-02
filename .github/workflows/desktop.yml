@@ -1,0 +1,145 @@
+# Desktop app (apps/desktop): test, build Windows + Linux installers, and on desktop-v* tags
+# create a DRAFT release. Nothing is published until a maintainer publishes the draft.
+# Runbook: docs/desktop/RELEASE.md
+name: desktop
+
+on:
+  push:
+    branches: [master, agent/desktop-app]
+    tags: ["desktop-v*"]
+    paths:
+      - "apps/desktop/**"
+      - "packages/**"
+      - "package-lock.json"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "packages/**"
+      - "package-lock.json"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  RUST_VERSION: "1.97.1"
+  CARGO_TERM_COLOR: never
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Linux libraries for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Rust ${{ env.RUST_VERSION }}
+        run: rustup toolchain install "$RUST_VERSION" --profile minimal -c clippy,rustfmt && rustup default "$RUST_VERSION"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: npm ci
+      - name: Shared package
+        run: npm test -w packages/shared && npm run typecheck -w packages/shared
+      - name: Desktop frontend
+        run: npm test -w apps/desktop && npm run lint -w apps/desktop && npm run build -w apps/desktop
+      - name: Web app still passes
+        run: npm test -w apps/web && npm run lint -w apps/web && npm run typecheck -w apps/web
+      - name: Rust fmt, clippy, tests
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04 # oldest supported glibc, so the AppImage/.deb run on older distros
+            bundles: deb,appimage
+          - os: windows-latest
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Linux libraries for Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Rust ${{ env.RUST_VERSION }}
+        shell: bash
+        run: rustup toolchain install "$RUST_VERSION" --profile minimal && rustup default "$RUST_VERSION"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: npm ci
+      - name: Fetch pinned yt-dlp, ffmpeg, Deno (SHA-256 verified)
+        run: npm run fetch-sidecars -w apps/desktop
+      - name: Build installers
+        working-directory: apps/desktop
+        run: npx tauri build --bundles ${{ matrix.bundles }}
+      - name: Stable asset names
+        shell: bash
+        run: |
+          mkdir -p out
+          bundle=apps/desktop/src-tauri/target/release/bundle
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "$bundle"/nsis/*-setup.exe out/dltube_x64-setup.exe
+          else
+            cp "$bundle"/appimage/*.AppImage out/dltube_amd64.AppImage
+            cp "$bundle"/deb/*.deb out/dltube_amd64.deb
+          fi
+          ls -l out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installers-${{ runner.os }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tag matches the app version
+        run: |
+          app=$(grep -m1 '^version' apps/desktop/src-tauri/Cargo.toml | cut -d'"' -f2)
+          [ "desktop-v$app" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME != Cargo.toml version $app"; exit 1; }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: out
+      - name: Checksums
+        working-directory: out
+        run: sha256sum dltube_* | tee SHA256SUMS
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* --draft --verify-tag \
+            --title "dltube ${GITHUB_REF_NAME#desktop-v}" \
+            --notes "Windows: dltube_x64-setup.exe. Linux: dltube_amd64.AppImage or dltube_amd64.deb. Verify downloads with SHA256SUMS. Installers are unsigned; see the download page for the Windows SmartScreen steps."
