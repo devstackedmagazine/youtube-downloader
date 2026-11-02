@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ClipRange, DownloadQuality, DownloadScope, VideoFormat, VideoMetadata } from "@/types";
+import { ClipRange, DownloadQuality, DownloadScope, MP3_QUALITIES, MP4_QUALITIES, VideoFormat, VideoMetadata } from "@/types";
 import { checkClip, formatTime } from "@/lib/time";
 import SectionPicker from "@/components/SectionPicker";
 
@@ -10,9 +10,6 @@ interface FormatSelectorProps {
   onDownload: (format: VideoFormat, quality: DownloadQuality, scope: DownloadScope, clip?: ClipRange) => void;
   isProcessing: boolean;
 }
-
-const mp4Qualities: DownloadQuality[] = ["1440p", "1080p", "720p", "480p", "360p"];
-const mp3Qualities: DownloadQuality[] = ["320kbps", "256kbps", "128kbps"];
 
 export default function FormatSelector({ metadata, onDownload, isProcessing }: FormatSelectorProps) {
   const [format, setFormat] = useState<VideoFormat>("mp4");
@@ -76,7 +73,7 @@ export default function FormatSelector({ metadata, onDownload, isProcessing }: F
             </>}
             <label className="mt-6 block text-sm font-semibold text-[#11110f]" htmlFor="quality">Quality</label>
             <select id="quality" value={quality} onChange={(event) => setQuality(event.target.value as DownloadQuality)} className="mt-2 h-14 w-full rounded-xl border border-[#11110f]/15 bg-[#f6f2e9] px-4 font-semibold outline-none transition focus:border-[#ff6b35]">
-              {(format === "mp4" ? mp4Qualities : mp3Qualities).map((item) => <option key={item} value={item}>{item}</option>)}
+              {(format === "mp4" ? MP4_QUALITIES : MP3_QUALITIES).map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </div>
           <div>
