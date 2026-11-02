@@ -87,7 +87,10 @@ pub fn download(tools: &Tools, req: &Request, work_dir: &Path) -> Result<Vec<Str
         return Err("Sections can only be downloaded from a single video, not a playlist.".into());
     }
     let mut args = common(tools);
-    args.extend(["--newline", "--progress", "--progress-template", progress::TEMPLATE].map(String::from));
+    args.extend(
+        ["--newline", "--progress", "--progress-delta", "0.5", "--progress-template", progress::TEMPLATE]
+            .map(String::from),
+    );
     args.extend(["--print".into(), format!("after_move:{}%(filepath)s", progress::FILE_PREFIX)]);
     args.extend(["-P".into(), work_dir.display().to_string(), "-o".into()]);
     args.push(if req.playlist { "%(playlist_index)03d - %(title).180B.%(ext)s" } else { "media.%(ext)s" }.into());
