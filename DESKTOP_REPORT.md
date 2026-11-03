@@ -2,6 +2,94 @@
 
 Branch `agent/desktop-app`, based on `agent/stabilize-and-clip` (PR #27 was still open, not merged into master, on 2026-11-02).
 
+## v0.1.0 follow-up (2026-11-03)
+
+Status: **all branch work is done and PR #29 is green, but nothing is merged or tagged.** PR #27 has to be merged first, and its own CodeQL check fails (details under "Blocked"). I may not push to #27's branch, so the merges, the tag and the draft-release checks are left for you. Exact steps are in "Needs Fatlum".
+
+What changed:
+
+1. **MP4 prefers H.264 + AAC for whole videos too**, up to the chosen height (1080p, 720p, 480p, 360p). It falls back to other codecs only if YouTube has no H.264 at that height. The new quality **"Best quality (may be AV1/VP9, may not play in older players)"** keeps the old behaviour (best stream in any codec). 1440p is gone, since YouTube serves H.264 only up to 1080p. A hint under the quality menu says which one plays everywhere. Unit tests updated, plus one new test (`best_quality_takes_any_codec`). Code: `format_selector` in `apps/desktop/src-tauri/core/src/args.rs`.
+2. **License: MIT**, `LICENSE` at the repo root ("Copyright (c) 2026 Fatlum Gerxhaliu"). `license = "MIT"` is set in both Cargo.toml files, `apps/desktop/package.json`, `packages/shared/package.json` and the Tauri bundle (.deb metadata). About has a new "License (MIT)" panel with the full text (compiled in from `LICENSE`). THIRD_PARTY_NOTICES now starts by saying dltube itself is MIT and the bundled tools keep their own licenses.
+3. **Website = the app's landing page** (`apps/web`):
+   - The home page keeps the same design. It now covers: what the app does, a section-download highlight ("Just the part you want"), Windows/Linux buttons with the stable `releases/latest/download/...` URLs, requirements, sizes, SmartScreen steps, AppImage/.deb steps and the FAQ (content from the old `/download-app` page).
+   - **No release yet:** the page asks GitHub's API for the latest published release, once at build time and then at most every 10 minutes (ISR). Results:
+     - 404 (none yet, drafts don't count): the buttons say **"Coming soon"** and link to the releases page.
+     - Rate limit or other error: one "Download from GitHub" button to the releases page.
+     - A published release: the three direct download buttons plus the version.
+     - Visitors never call GitHub themselves.
+   - Navigation: "Get the app" (→ `/#download`) replaces "Start a download". `/download` and `/download-app` redirect (308) to `/#download`.
+   - **Removed** (the web downloader):
+     - pages `src/app/download/page.tsx` and `src/app/download-app/page.tsx`
+     - components `URLInput`, `FormatSelector`, `SectionPicker`, `DownloadProgress`, `AdPlaceholder` and `DonationWidget` (the last two weren't used anywhere)
+     - `src/lib/api.ts` (the Render API client), `src/lib/wake.ts` and its test (cold-start retries), `src/lib/analytics.ts` (a console.log stub), `src/lib/time.ts`, `src/types/index.ts`
+     - dependencies `@dltube/shared`, `@stripe/react-stripe-js`, `@stripe/stripe-js`, `next-seo`, `posthog-js`, `react-hook-form`, `swr`, and `transpilePackages` in `next.config.ts`
+     - `NEXT_PUBLIC_API_URL` in `apps/web/Dockerfile`, `docker-compose.yml` and the root `.env.example`
+   - **The website no longer calls the Render API at all.** README now says what each folder is; `apps/api` is described as the retired server downloader.
+   - Checks: lint 0 errors (1 old warning in MotionShowcase), typecheck clean, tests 3/3 (new `src/lib/desktop.test.mjs` for the release-state logic), `next build` OK. All of these ran in a clean `git worktree` + `npm ci`, because the main checkout has stale `.next/dev` types from your own earlier dev runs (April/July), which I didn't delete. Against a local `next start`: `/` 200 and showing "Coming soon", `/download` and `/download-app` 308 → `/#download`, unknown paths 404.
+   - The Vercel preview of #29 is behind Vercel login, so I couldn't look at it.
+4. **CI smoke tests** (`.github/workflows/desktop.yml`, kept for every future run):
+   - **Windows:** silent NSIS install into `C:\dltube-test`; checks `tools\yt-dlp.exe`, `ffmpeg.exe`, `ffprobe.exe`, `deno.exe` and runs their version commands; runs the local cut test with the installed tools; launches `dltube.exe` and checks that it still runs after 20 s and that WebView2 processes for `app.dltube.desktop` exist; saves a screenshot as artifact **`windows-smoke-screenshot`**; closes the app; uninstalls silently and checks the files are gone.
+   - **Linux:** unpacks the built `.deb` and runs the same version checks and local cut test against its `tools/`.
+   - **Local cut test** (`apps/desktop/scripts/smoke-cut.mjs`): the bundled ffmpeg makes a 20 s `testsrc` + `sine` video, which is served on `127.0.0.1`. `dltube-cli` then cuts 5–12 s to MP4 and MP3 through the app's real `runner::download` code (yt-dlp `--download-sections` + `--force-keyframes-at-cuts`). ffprobe checks: MP4 must be H.264 + AAC and the MP3 must be MP3, both 7 s ± 0.25, and no partial folders may be left behind. `dltube-cli` is built with the CI-only cargo feature `local-test`, which accepts `http://127.0.0.1:` URLs with yt-dlp's generic extractor. The app is never built with that feature.
+     - Why not `file://`: yt-dlp refuses to cut sections from `file://` URLs ("This format cannot be partially downloaded"). Found and fixed locally before the first CI run.
+     - Locally: MP4 7.000 s h264+aac, MP3 7.012 s.
+   - **YouTube from the Windows runner:** exactly one metadata lookup (yt-dlp with the app's flags, test video jNQXAC9IVRw). The result goes into the run summary; the step can never fail the build.
+   - Push triggers are now `master` only (plus tags and PRs), so a push to a PR branch starts one run instead of two.
+5. **CodeQL:** the high alert `py/incomplete-url-substring-sanitization` came from `apps/api/tests/test_config.py:37`, a list-membership test that CodeQL mistakes for URL sanitization. On this branch it is now a set comparison (commit `8c9fa02`). CodeQL passes on #29.
+6. PR #28 was closed with the requested comment.
+
+### CI runs for this follow-up
+
+1 run of the 6 allowed. Later docs-only pushes don't match the workflow's path filter.
+
+| Run | Result |
+|---|---|
+| 1 ([41610323767](https://github.com/devstackedmagazine/youtube-downloader/actions/runs/41610323767), `ba04536`) | **All green on the first try.** test 2m43s; Linux build + smoke 6m16s; Windows build + smoke 11m08s; release skipped (no tag). |
+
+What the smoke tests showed in that run:
+
+- **Windows:** the silent install worked and `tools\` had all four executables. ffmpeg `n8.1.3-27-g8dca1586f4`, Deno 2.9.8 and yt-dlp 2026.10.26 ran. Cut test: `OK mp4 720p … duration=7.000s codecs=h264,aac` and `OK mp3 128kbps … duration=7.012s`, no leftovers. The app was still running after 20 s with **6 WebView2 processes**. The silent uninstall removed it.
+- **Screenshot:** artifact **`windows-smoke-screenshot`** (`dltube-windows.png`) shows the dltube window on Windows 11 with the Download tab rendered (title bar, tabs, URL field, "Load video").
+- **Linux (.deb contents):** the same tool versions, and the same two cut results.
+- **YouTube from the Windows runner: blocked**, as expected for cloud IPs: `ERROR: [youtube] jNQXAC9IVRw: Sign in to confirm you're not a bot`. It was recorded in the run summary and did not fail the build.
+
+### Blocked: why nothing is merged
+
+The permissions were: merge #27, then #29, **only when all checks are green**. PR #27's `CodeQL` check fails on its head commit `aac9011` ([check run](https://github.com/devstackedmagazine/youtube-downloader/runs/124682957121)) because of the same test line fixed here. The fix has to land on #27's branch (`agent/stabilize-and-clip`), and pushing there isn't something I'm allowed to do. Merging #29 first would merge #27's commits out of order, so I didn't do that either. As a result I also did not:
+
+- merge, tag or run CI on master
+- check the draft release
+- run `curl https://dltube.vercel.app`
+- open the docs PR (this report is updated on the #29 branch instead, so it lands with the merge)
+
+### Vercel environment variables you can delete
+
+The website no longer reads any of these (names only; I never looked at values):
+
+- `NEXT_PUBLIC_API_URL` (pointed at the Render API)
+- `NEXT_PUBLIC_STRIPE_KEY` and `NEXT_PUBLIC_POSTHOG_KEY`, if you ever set them (they are listed in your local `apps/web/.env.example`; the code never used them)
+
+Keep `NEXT_PUBLIC_DESKTOP_REPO` only if you set it on purpose; without it the site uses `devstackedmagazine/youtube-downloader`.
+
+### Needs Fatlum (v0.1.0, in order)
+
+0. **Unblock and finish the release (needed before step 1).** Any one of these clears #27's CodeQL check:
+   - On `agent/stabilize-and-clip`, cherry-pick `8c9fa02` (or change line 37 of `apps/api/tests/test_config.py` to `assert {"https://dltube.vercel.app", "http://localhost:3000"} <= set(settings.cors_origins)`) and push. #29 has the identical change, so it merges cleanly.
+   - Or dismiss the alert as a false positive (Security → Code scanning → the alert → Dismiss → "Used in tests"), then re-run #27's checks.
+
+   Then:
+   1. Merge #27, then #29, with merge commits. This deploys the new landing page on Vercel. Check it with `curl -s https://dltube.vercel.app | grep -c "Coming soon"`.
+   2. Wait for the `desktop` run on master to go green.
+   3. Run `git tag desktop-v0.1.0 <master head> && git push origin desktop-v0.1.0`.
+   4. The tag run creates the draft. It should contain `dltube_x64-setup.exe`, `dltube_amd64.AppImage`, `dltube_amd64.deb` and `SHA256SUMS`. Download them and run `sha256sum -c SHA256SUMS`. The names must match `apps/web/src/lib/desktop.ts`.
+
+   Or tell me once #27 is green, and I'll do steps 1–4 and the docs PR.
+1. **Test the draft's Windows installer on a real Windows PC**, or the free Windows 11 evaluation VM (https://developer.microsoft.com/windows/downloads/virtual-machines/). Install it (SmartScreen: More info → Run anyway). Download a whole video, an MP3 section and an MP4 section, and play each in the default Windows player (Media Player / Films & TV).
+2. **Publish the draft release** (Releases → Drafts → Edit → Publish). Within about 10 minutes the website switches from "Coming soon" to the real download buttons, with no redeploy.
+3. **Suspend the Render service** and **remove the unused Vercel env vars** (list above).
+4. Optional: **delete the Upstash database** (only the retired API used it).
+5. Later: **apply to the SignPath Foundation** (https://signpath.org/apply) for free Windows code signing. The repo is public and MIT, which they require.
+
 ## Summary
 
 dltube now has a desktop app for Windows 10/11 x64 and Linux x64 (`apps/desktop`, Tauri v2). Everything happens on the user's computer, with their own IP: no server and no costs. The app bundles pinned, checksum-verified copies of yt-dlp, ffmpeg/ffprobe and Deno, keeps yt-dlp up to date by itself, and links to new app releases on GitHub.
@@ -9,8 +97,8 @@ dltube now has a desktop app for Windows 10/11 x64 and Linux x64 (`apps/desktop`
 Does it work?
 
 - **Linux: yes, tested.** Real downloads through the app's own Rust code worked on this machine (results below). I built the `.deb` and AppImage locally in an Ubuntu 22.04 container and launched the AppImage under Xvfb. It started cleanly, copied yt-dlp into its data folder, ran its update check, and rendered the UI.
-- **Windows: builds and packages in CI (143 MiB NSIS installer). I couldn't run it**: I have no Windows machine.
-- The website has a new `/download-app` page, linked from the home page. The existing web downloader is unchanged.
+- **Windows: builds and packages in CI (143 MiB NSIS installer).** Since the v0.1.0 follow-up, CI also installs it, cuts a test video with the installed tools, launches it (screenshot) and uninstalls it. A real download from YouTube on Windows still needs a home connection: YouTube blocks CI runners.
+- The website: see the follow-up above. The home page is now the app's landing page and the web downloader is retired.
 
 ## Architecture
 
@@ -103,7 +191,7 @@ AppImage under Xvfb (fresh user, fresh container): it starts with no errors in i
 
 ## What couldn't be tested, and why
 
-- **Windows installer and app at runtime:** no Windows machine. CI builds it. Not verified: NSIS install/uninstall, the WebView2 bootstrapper, `taskkill /T` cancellation, the console-free spawning (`CREATE_NO_WINDOW`), and yt-dlp self-update on Windows. These code paths compile in CI but have never run.
+- **Windows at runtime:** since the follow-up, CI verifies the silent install and uninstall, the bundled tools, the cut/convert code with the installed tools (including the `CREATE_NO_WINDOW` spawning), and app launch with WebView2 (already present on the runner). Still not verified: the WebView2 bootstrapper on a PC without WebView2, `taskkill /T` cancellation, yt-dlp self-update, and real YouTube downloads (YouTube blocks the runner).
 - **Clicking through the real UI end to end** (Tauri window + IPC + a real download): the host has no WebKitGTK dev headers, so I didn't install anything there. I only launched the AppImage under Xvfb and took a screenshot. The download path itself was tested through the same Rust functions with the CLI harness.
 - **Playlist download:** not run against YouTube, because of the download budget (only the two test videos were allowed). The playlist arguments and file moving are unit-tested; the playlist item counter comes from `info.playlist_index`/`n_entries`.
 - **A real yt-dlp self-update:** the bundled 2026.10.26 is the newest release, so nothing was swapped. The verify/swap/rollback logic is tested with fake binaries; the GitHub JSON parsing is tested with fixtures.
@@ -115,7 +203,7 @@ AppImage under Xvfb (fresh user, fresh container): it starts with no errors in i
 3. **The fetch script still names files with Tauri's target-triple convention** (`yt-dlp-x86_64-pc-windows-msvc.exe`). The per-OS `tauri.<os>.conf.json` maps them to `tools/<name>`.
 4. **ffmpeg: BtbN GPL static build** (n8.1.3, month-end autobuild, which BtbN keeps long-term). GPL is required because cutting sections re-encodes with libx264. ffprobe is bundled as the brief and yt-dlp's docs ask, but it doubles the ffmpeg size (see Risks).
 5. **The installer flavour for Windows is per-user NSIS** (`installMode: currentUser`): no admin prompt. WebView2 uses Tauri's download bootstrapper (it's already built into Windows 11 and most Windows 10).
-6. **Whole-video MP4 keeps the web app's format choice** (best stream, any codec, audio forced to AAC). In the test, that gave **AV1** video. Sections prefer H.264 + AAC as the brief asked. AV1 plays in modern browsers/VLC and on Windows 11, but Windows 10's built-in player needs the free "AV1 Video Extension". If you'd rather have maximum compatibility, change `format_selector` in `core/src/args.rs` to prefer `avc1` for whole videos too (one line). I didn't change it, to keep parity with the web.
+6. ~~Whole-video MP4 keeps the web app's format choice~~ Changed in the follow-up: every MP4 quality now prefers H.264 + AAC, and "Best quality" keeps the any-codec behaviour (it gave AV1 in the original test).
 7. **Thumbnails** are loaded by the web view straight from `i.ytimg.com` (allowed in the CSP, with `no-referrer`). This is YouTube's image CDN; it doesn't go through yt-dlp. The alternative is no thumbnails.
 8. **App version** lives only in `src-tauri/Cargo.toml` (Tauri reads it from there). The release workflow refuses a tag that doesn't match.
 9. **No Rust install was needed:** rustup + Rust 1.97.1 were already in the home folder.
@@ -153,7 +241,7 @@ AppImage under Xvfb (fresh user, fresh container): it starts with no errors in i
 - Nothing that looked like prompt injection in files, tool output or package metadata.
 - The `gh` CLI is logged in with a token that has write access to this repo. I used it only for reading (PR state, release metadata of yt-dlp/BtbN/Deno/actions, CI logs), pushing this branch, and opening the PR.
 
-## Needs Fatlum (in order)
+## Needs Fatlum (original list, superseded by the v0.1.0 list at the top)
 
 1. **Confirm name, identifier and license.**
    - Product name `dltube` (the website says "DLTube"). Identifier `app.dltube.desktop`: it decides the data folder (`~/.local/share/app.dltube.desktop`, `%APPDATA%\app.dltube.desktop`) and can't change after release without losing users' history/settings. To change: `identifier` in `apps/desktop/src-tauri/tauri.conf.json`.

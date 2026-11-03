@@ -6,12 +6,19 @@ The desktop app lives in `apps/desktop`. CI is `.github/workflows/desktop.yml`.
 
 | Trigger | Result |
 |---|---|
-| Push to `master` or `agent/desktop-app` touching `apps/desktop/**`, `packages/**`, `package-lock.json` or the workflow; PRs touching those | Tests (shared package, desktop frontend, web, Rust fmt/clippy/tests), then builds the Windows and Linux installers and uploads them as workflow artifacts (kept 14 days). |
+| Push to `master` touching `apps/desktop/**`, `packages/**`, `package-lock.json` or the workflow; PRs touching those | Tests (shared package, desktop frontend, web, Rust fmt/clippy/tests), then builds the Windows and Linux installers, uploads them as workflow artifacts (kept 14 days), and smoke-tests them (below). |
 | Push of a tag `desktop-v<version>` | The same, plus a **draft** GitHub Release with `dltube_x64-setup.exe`, `dltube_amd64.AppImage`, `dltube_amd64.deb` and `SHA256SUMS`. The tag must equal `desktop-v` + the version in `apps/desktop/src-tauri/Cargo.toml`. |
+
+Smoke tests in the build job (a failure blocks the draft release):
+
+- **Linux:** unpacks the `.deb`, runs the bundled `yt-dlp --version`, `ffmpeg -version`, `deno --version`, then the local cut test.
+- **Windows:** installs `dltube_x64-setup.exe` silently into `C:\dltube-test`, checks `tools\*.exe` and their versions, runs the local cut test with the installed tools, launches `dltube.exe` and checks it is still running after 20 s with WebView2 started, saves a screenshot (artifact **`windows-smoke-screenshot`**), closes the app and uninstalls silently.
+- **Local cut test** (`apps/desktop/scripts/smoke-cut.mjs`): makes a 20 s test video with the bundled ffmpeg, serves it on `127.0.0.1`, and cuts 5–12 s as MP4 (must be H.264 + AAC) and MP3 through `dltube-cli`, i.e. the app's real `runner::download` code. `dltube-cli` is built with the CI-only cargo feature `local-test`, which lets it accept `http://127.0.0.1` media instead of YouTube links. The app itself never has that feature.
+- **YouTube from the runner:** one metadata lookup on Windows, only to record in the run summary whether YouTube blocks CI IPs. It never fails the build.
 
 Asset names never contain the version, so `https://github.com/<owner>/<repo>/releases/latest/download/dltube_x64-setup.exe` always points at the newest published release. The website reads `<owner>/<repo>` from `apps/web/src/lib/desktop.ts` (or `NEXT_PUBLIC_DESKTOP_REPO`).
 
-Releases only work for visitors if the repository is **public** (see DESKTOP_REPORT.md, "Needs Fatlum").
+Releases only work for visitors while the repository is **public** (it is, by decision). Until the first release is published, the website shows "Coming soon" and links to the releases page; it checks GitHub's "latest release" at build time and then every 10 minutes, so a newly published release shows up on the site within about 10 minutes, without a redeploy.
 
 ## Cut a release
 
@@ -23,6 +30,7 @@ Releases only work for visitors if the repository is **public** (see DESKTOP_REP
    ```
 3. Wait for the `desktop` workflow run for the tag (Actions tab). It ends with a draft release.
 4. Review the draft (Releases → Drafts):
+   - Look at the run's `windows-smoke-screenshot` artifact: the app window should show the Download tab.
    - Download each installer. Check it against `SHA256SUMS` (`sha256sum -c SHA256SUMS --ignore-missing`, or `Get-FileHash` on Windows).
    - Windows: install, then download a short video and a section. Linux: run the AppImage and install the .deb, same check.
    - Edit the notes (what changed).
@@ -62,7 +70,10 @@ Users' yt-dlp updates itself daily from the official releases, so bumping it in 
 cd apps/desktop
 node scripts/fetch-sidecars.mjs --force            # verifies every hash
 src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu --version
-# quick real check through the same code as the app:
+# offline check of the cut/convert path (same as CI):
+(cd src-tauri && cargo build --release -p dltube-core --features local-test --bin dltube-cli)
+node scripts/smoke-cut.mjs src-tauri/target/release/dltube-cli src-tauri/binaries "$(mktemp -d)"
+# quick real check through the same code as the app (normal build, real YouTube):
 cd src-tauri && cargo run --release -p dltube-core --bin dltube-cli -- binaries "$(mktemp -d)" download "https://www.youtube.com/watch?v=jNQXAC9IVRw" mp3 128kbps 5 12
 ```
 
