@@ -40,11 +40,13 @@ What changed:
 
 ### CI runs for this follow-up
 
-1 run of the 6 allowed. Later docs-only pushes don't match the workflow's path filter.
+3 runs of the 6 allowed. On a PR, the path filter looks at the whole PR diff, so the docs-only pushes also started runs.
 
 | Run | Result |
 |---|---|
 | 1 ([41610323767](https://github.com/devstackedmagazine/youtube-downloader/actions/runs/41610323767), `ba04536`) | **All green on the first try.** test 2m43s; Linux build + smoke 6m16s; Windows build + smoke 11m08s; release skipped (no tag). |
+| 2 ([41612420186](https://github.com/devstackedmagazine/youtube-downloader/actions/runs/41612420186), `5c4f1a8`, docs) | All green. |
+| 3 (this report correction, docs) | See PR #29. |
 
 What the smoke tests showed in that run:
 

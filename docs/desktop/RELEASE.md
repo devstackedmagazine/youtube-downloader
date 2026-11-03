@@ -6,7 +6,7 @@ The desktop app lives in `apps/desktop`. CI is `.github/workflows/desktop.yml`.
 
 | Trigger | Result |
 |---|---|
-| Push to `master` touching `apps/desktop/**`, `packages/**`, `package-lock.json` or the workflow; PRs touching those | Tests (shared package, desktop frontend, web, Rust fmt/clippy/tests), then builds the Windows and Linux installers, uploads them as workflow artifacts (kept 14 days), and smoke-tests them (below). |
+| Push to `master` touching `apps/desktop/**`, `packages/**`, `package-lock.json` or the workflow; every push to a PR whose diff touches those | Tests (shared package, desktop frontend, web, Rust fmt/clippy/tests), then builds the Windows and Linux installers, uploads them as workflow artifacts (kept 14 days), and smoke-tests them (below). |
 | Push of a tag `desktop-v<version>` | The same, plus a **draft** GitHub Release with `dltube_x64-setup.exe`, `dltube_amd64.AppImage`, `dltube_amd64.deb` and `SHA256SUMS`. The tag must equal `desktop-v` + the version in `apps/desktop/src-tauri/Cargo.toml`. |
 
 Smoke tests in the build job (a failure blocks the draft release):
