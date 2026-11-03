@@ -10,7 +10,7 @@ gsap.registerPlugin(ScrollTrigger);
 const formats = [
   { name: "MP4", note: "The visual cut", image: "https://picsum.photos/seed/film-projector/1000/1200", tint: "#d9e7df" },
   { name: "MP3", note: "The listening cut", image: "https://picsum.photos/seed/cassette-tape/1000/1200", tint: "#f2d2c2" },
-  { name: "4K", note: "The full-resolution cut", image: "https://picsum.photos/seed/landscape-scan/1000/1200", tint: "#ded8ed" },
+  { name: "Clips", note: "The exact-section cut", image: "https://picsum.photos/seed/landscape-scan/1000/1200", tint: "#ded8ed" },
 ];
 
 export default function MotionShowcase() {

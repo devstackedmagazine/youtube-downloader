@@ -1,8 +1,17 @@
 # DLTube
 
-DLTube downloads individual YouTube videos or playlists as MP4 or MP3 files. Playlist downloads are packaged as a ZIP archive.
+DLTube downloads YouTube videos, exact sections and playlists as MP4 or MP3. It is a desktop app for Windows and Linux, MIT licensed.
 
-## Run locally
+| Path | What |
+|---|---|
+| `apps/desktop` | The desktop app (Tauri). Release runbook: [docs/desktop/RELEASE.md](docs/desktop/RELEASE.md). |
+| `apps/web` | The website (https://dltube.vercel.app): the app's landing and download page. It has no backend. |
+| `packages/shared` | Time parsing and quality types used by the desktop app. |
+| `apps/api` | The retired server-side downloader (FastAPI + Redis). The website no longer uses it; the notes below are kept for self-hosting. |
+
+## The retired server downloader
+
+### Run locally
 
 Install Docker Desktop, start it, then run from the repository root:
 
@@ -11,7 +20,7 @@ Copy-Item .env.example .env
 docker compose up --build
 ```
 
-Open `http://localhost:3000`. The API health endpoint is `http://localhost:8000/api/health`.
+The website is at `http://localhost:3000` (landing page only). The API health endpoint is `http://localhost:8000/api/health`.
 
 To stop the stack:
 
@@ -19,18 +28,17 @@ To stop the stack:
 docker compose down
 ```
 
-## Deploy the API on Render
+### Deploy the API on Render
 
 The production API runs on Render's free tier from `render.yaml`; see [RENDER_DEPLOY.md](RENDER_DEPLOY.md).
 
-## Deploy with Docker
+### Deploy with Docker
 
 1. Copy `.env.example` to `.env` on the server.
 2. Set these values to your public HTTPS domains:
 
 ```dotenv
 FRONTEND_URL=https://downloads.example.com
-NEXT_PUBLIC_API_URL=https://api.downloads.example.com
 TRUSTED_HOSTS=api.downloads.example.com
 ```
 
@@ -40,11 +48,9 @@ TRUSTED_HOSTS=api.downloads.example.com
 docker compose up --build -d
 ```
 
-`NEXT_PUBLIC_API_URL` is compiled into the browser bundle. Rebuild the `web` service whenever it changes.
-
 Rate limiting keys on the socket address unless `CLIENT_IP_HEADER` names a header your proxy always overwrites with the client address. For nginx: `proxy_set_header X-Real-IP $remote_addr;` and `CLIENT_IP_HEADER=x-real-ip`. Keep port `8000` unreachable except through the proxy.
 
-## Operational notes
+### Operational notes
 
 - Keep Redis private; the compose configuration intentionally does not publish its port.
 - Download files remain available for up to 24 hours. The worker removes expired job files before each new job.
