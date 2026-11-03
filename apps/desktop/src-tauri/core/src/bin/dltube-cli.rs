@@ -2,8 +2,11 @@
 //!
 //!   dltube-cli <bin-dir> <out-dir> metadata <url> [--single]
 //!   dltube-cli <bin-dir> <out-dir> download <url> <mp4|mp3> <quality> [start] [end] [--cancel-after <secs>]
+//!   dltube-cli <bin-dir> <out-dir> local <http://127.0.0.1:port/file.mp4> <mp4|mp3> <quality> [start] [end]
+//!     (needs --features local-test; skips the metadata lookup)
 //!
-//! <bin-dir> holds the sidecars as fetched by scripts/fetch-sidecars.mjs (target-triple names).
+//! <bin-dir> holds the sidecars as fetched by scripts/fetch-sidecars.mjs (target-triple names),
+//! or an installed app's tools/ folder (plain names).
 use dltube_core::{runner, Format, Request, Tools};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -13,7 +16,12 @@ use std::time::{Duration, Instant};
 
 fn tool(bin_dir: &Path, name: &str) -> PathBuf {
     let triple = if cfg!(windows) { "x86_64-pc-windows-msvc.exe" } else { "x86_64-unknown-linux-gnu" };
-    bin_dir.join(format!("{name}-{triple}"))
+    let fetched = bin_dir.join(format!("{name}-{triple}"));
+    if fetched.exists() {
+        fetched
+    } else {
+        bin_dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+    }
 }
 
 fn main() -> ExitCode {
@@ -45,25 +53,29 @@ fn main() -> ExitCode {
     let result = match args[2].as_str() {
         "metadata" => runner::fetch_metadata(&tools, &args[3], single, &cancel)
             .map(|m| println!("{}", serde_json::to_string_pretty(&m).unwrap())),
-        "download" if args.len() >= 6 => {
+        "download" | "local" if args.len() >= 6 => {
             let num = |i: usize| args.get(i).and_then(|s| s.parse::<f64>().ok());
             let format = if args[4] == "mp3" { Format::Mp3 } else { Format::Mp4 };
-            let meta = match runner::fetch_metadata(&tools, &args[3], true, &cancel) {
-                Ok(m) => m,
-                Err(e) => {
-                    eprintln!("metadata failed: {e}");
-                    return ExitCode::FAILURE;
+            let (url, title, duration) = if args[2] == "local" {
+                (args[3].clone(), "local-test".to_string(), 0.0) // 0 = unknown duration
+            } else {
+                match runner::fetch_metadata(&tools, &args[3], true, &cancel) {
+                    Ok(m) => (args[3].clone(), m.title, m.duration),
+                    Err(e) => {
+                        eprintln!("metadata failed: {e}");
+                        return ExitCode::FAILURE;
+                    }
                 }
             };
             let req = Request {
-                url: args[3].clone(),
+                url,
                 format,
                 quality: args[5].clone(),
                 playlist: false,
                 start: num(6),
                 end: num(7),
-                title: meta.title,
-                duration: meta.duration,
+                title,
+                duration,
             };
             if let Some(secs) = cancel_after {
                 let cancel = Arc::clone(&cancel);

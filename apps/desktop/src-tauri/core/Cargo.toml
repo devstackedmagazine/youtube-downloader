@@ -6,6 +6,12 @@ license = "MIT"
 publish = false
 description = "yt-dlp driving logic for the dltube desktop app (no Tauri dependency, so it is testable headless)"
 
+[features]
+# CI only (the app never enables it): accept http://127.0.0.1 media via yt-dlp's generic extractor
+# instead of YouTube, so the cut/convert path can be smoke-tested without YouTube. (yt-dlp can't
+# cut sections from file:// URLs, hence a loopback HTTP server.)
+local-test = []
+
 [dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"

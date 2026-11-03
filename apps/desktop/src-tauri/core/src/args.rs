@@ -9,8 +9,9 @@ pub const MAX_PLAYLIST_ITEMS: u32 = 1000;
 
 /// Options every invocation gets: our own tools only, no user config or plugins.
 fn common(tools: &Tools) -> Vec<String> {
+    let extractors = if cfg!(feature = "local-test") { "generic" } else { "youtube" };
     let mut args: Vec<String> =
-        ["--ignore-config", "--no-plugin-dirs", "--use-extractors", "youtube", "--no-js-runtimes", "--js-runtimes"]
+        ["--ignore-config", "--no-plugin-dirs", "--use-extractors", extractors, "--no-js-runtimes", "--js-runtimes"]
             .map(String::from)
             .into();
     args.push(format!("deno:{}", tools.deno.display()));
@@ -23,6 +24,9 @@ fn common(tools: &Tools) -> Vec<String> {
 }
 
 fn checked_url(raw: &str) -> Result<String, String> {
+    if cfg!(feature = "local-test") && raw.starts_with("http://127.0.0.1:") {
+        return Ok(raw.into());
+    }
     if url::is_youtube_url(raw) {
         Ok(url::normalize(raw))
     } else {

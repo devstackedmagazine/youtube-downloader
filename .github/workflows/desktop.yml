@@ -5,7 +5,7 @@ name: desktop
 
 on:
   push:
-    branches: [master, agent/desktop-app]
+    branches: [master] # PR branches are covered by pull_request (one run per push, not two)
     tags: ["desktop-v*"]
     paths:
       - "apps/desktop/**"
@@ -117,6 +117,84 @@ jobs:
           name: installers-${{ runner.os }}
           path: out/*
           if-no-files-found: error
+          retention-days: 14
+
+      # Smoke tests: the packaged tools run, and the app's real cut/convert code (dltube-cli built
+      # with the CI-only local-test feature) cuts a generated video served on 127.0.0.1. No YouTube.
+      - name: Harness for the local cut test
+        working-directory: apps/desktop/src-tauri
+        run: cargo build --release --locked -p dltube-core --features local-test --bin dltube-cli
+      - name: Smoke test (Linux .deb contents)
+        if: runner.os == 'Linux'
+        run: |
+          dpkg-deb -x out/dltube_amd64.deb "$RUNNER_TEMP/deb"
+          tools=$(dirname "$(find "$RUNNER_TEMP/deb" -path '*/tools/yt-dlp')")
+          ls -l "$tools"
+          "$tools/yt-dlp" --version
+          "$tools/ffmpeg" -hide_banner -version
+          "$tools/deno" --version
+          node apps/desktop/scripts/smoke-cut.mjs apps/desktop/src-tauri/target/release/dltube-cli "$tools" "$RUNNER_TEMP/smoke"
+      - name: Smoke test (Windows installer)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = 'C:\dltube-test'
+          $p = Start-Process out\dltube_x64-setup.exe -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
+          Get-ChildItem -Recurse $dir | Format-Table FullName, Length -AutoSize | Out-String -Width 200
+          foreach ($t in 'yt-dlp', 'ffmpeg', 'ffprobe', 'deno') {
+            if (-not (Test-Path "$dir\tools\$t.exe")) { throw "missing tools\$t.exe" }
+          }
+          & "$dir\tools\yt-dlp.exe" --version; if ($LASTEXITCODE) { throw 'yt-dlp --version failed' }
+          & "$dir\tools\ffmpeg.exe" -hide_banner -version; if ($LASTEXITCODE) { throw 'ffmpeg -version failed' }
+          & "$dir\tools\deno.exe" --version; if ($LASTEXITCODE) { throw 'deno --version failed' }
+          node apps/desktop/scripts/smoke-cut.mjs apps\desktop\src-tauri\target\release\dltube-cli.exe "$dir\tools" "$env:RUNNER_TEMP\smoke"
+          if ($LASTEXITCODE) { throw 'local cut test failed' }
+      - name: YouTube from a CI runner (informational, never fails the build)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          # One metadata lookup with the installed tools, to record whether YouTube blocks CI IPs.
+          $t = 'C:\dltube-test\tools'
+          $out = & "$t\yt-dlp.exe" --ignore-config --no-plugin-dirs --use-extractors youtube --no-js-runtimes --js-runtimes "deno:$t\deno.exe" --skip-download --no-playlist --print '%(id)s %(duration)s %(title)s' -- 'https://www.youtube.com/watch?v=jNQXAC9IVRw' 2>&1 | Out-String
+          $result = if ($LASTEXITCODE -eq 0) { 'reachable' } elseif ($out -match 'confirm you.re not a bot|HTTP Error 429') { 'blocked' } else { 'failed' }
+          $fence = '```'
+          "YouTube metadata lookup from windows-latest: **$result**`n$fence`n$($out.Trim())`n$fence" >> $env:GITHUB_STEP_SUMMARY
+          "result: $result"; $out
+          exit 0
+      - name: Launch the installed app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = 'C:\dltube-test'
+          $app = Start-Process "$dir\dltube.exe" -PassThru
+          Start-Sleep -Seconds 20
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)
+          $bmp.Save("$env:RUNNER_TEMP\dltube-windows.png")
+          if ($app.HasExited) { throw "dltube exited after start with code $($app.ExitCode)" }
+          # Tauri's WebView2 runs with --user-data-dir under %LOCALAPPDATA%\app.dltube.desktop.
+          $wv = @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -match 'app\.dltube\.desktop' })
+          "dltube running after 20 s (pid $($app.Id)); WebView2 processes: $($wv.Count)"
+          if ($wv.Count -eq 0) { throw 'WebView2 did not start for dltube' }
+          Stop-Process -Id $app.Id
+          $app.WaitForExit(15000) | Out-Null
+          Start-Process "$dir\uninstall.exe" -ArgumentList '/S' -Wait
+          # The NSIS uninstaller re-launches itself from %TEMP%; wait for it to remove the files.
+          for ($i = 0; $i -lt 60 -and (Test-Path "$dir\dltube.exe"); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path "$dir\dltube.exe") { throw 'uninstall left dltube.exe behind' }
+          'uninstalled'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && runner.os == 'Windows'
+        with:
+          name: windows-smoke-screenshot
+          path: ${{ runner.temp }}/dltube-windows.png
+          if-no-files-found: warn
           retention-days: 14
 
   release:
