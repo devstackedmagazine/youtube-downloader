@@ -1,0 +1,43 @@
+{
+  "_comment": "Pinned tool versions bundled with the app. Bump with docs/desktop/RELEASE.md. sha256 = the archive/file as published (checked against each project's own checksum file).",
+  "yt-dlp": {
+    "version": "2026.10.26",
+    "license": "Unlicense",
+    "source": "https://github.com/yt-dlp/yt-dlp/tree/2026.10.26",
+    "x86_64-unknown-linux-gnu": {
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp_linux",
+      "sha256": "767ba9dce7052aa196f8b12652f433d76de128ba168966fa84b6394d5e6c6795"
+    },
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.exe",
+      "sha256": "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d"
+    }
+  },
+  "ffmpeg": {
+    "version": "n8.1.3-27-g8dca1586f4 (BtbN autobuild-2026-10-31-12-59, GPL)",
+    "license": "GPL-3.0-or-later (GPL build, includes libx264)",
+    "source": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-31-12-59",
+    "binaries": ["ffmpeg", "ffprobe"],
+    "x86_64-unknown-linux-gnu": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/ffmpeg-n8.1.3-27-g8dca1586f4-linux64-gpl-8.1.tar.xz",
+      "sha256": "41e9c565594c390622cf968d82fa4135d9e9a11d06c1515644288cbc844e3380"
+    },
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/ffmpeg-n8.1.3-27-g8dca1586f4-win64-gpl-8.1.zip",
+      "sha256": "401dffcf14c301082e1fc03b0bc876b92ea676bfc521fc56e80a1537d137034f"
+    }
+  },
+  "deno": {
+    "version": "2.9.8",
+    "license": "MIT",
+    "source": "https://github.com/denoland/deno/tree/v2.9.8",
+    "x86_64-unknown-linux-gnu": {
+      "url": "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-unknown-linux-gnu.zip",
+      "sha256": "e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
+    },
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-pc-windows-msvc.zip",
+      "sha256": "cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf"
+    }
+  }
+}

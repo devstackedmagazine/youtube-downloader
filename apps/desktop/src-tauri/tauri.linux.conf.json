@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "resources": {
+      "binaries/yt-dlp-x86_64-unknown-linux-gnu": "tools/yt-dlp",
+      "binaries/ffmpeg-x86_64-unknown-linux-gnu": "tools/ffmpeg",
+      "binaries/ffprobe-x86_64-unknown-linux-gnu": "tools/ffprobe",
+      "binaries/deno-x86_64-unknown-linux-gnu": "tools/deno",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    }
+  }
+}

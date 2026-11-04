@@ -8,14 +8,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces",
-    "build": "npm run build --workspaces",
-    "start": "npm run start --workspaces"
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "start": "npm run start --workspaces --if-present"
   },
   "overrides": {
-    "postcss": "8.5.18",
+    "postcss": "8.5.23",
     "next": {
-      "postcss": "8.5.18"
+      "postcss": "8.5.23"
     }
   }
 }

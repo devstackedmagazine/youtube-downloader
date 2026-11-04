@@ -12,11 +12,11 @@ export default function Navbar() {
         <nav className="hidden items-center gap-8 text-sm text-[#bdb9af] md:flex">
           <Link href="/#capabilities" className="nav-link">Capabilities</Link>
           <Link href="/#how-it-works" className="nav-link">How it works</Link>
-          <Link href="/#ethos" className="nav-link">Built differently</Link>
+          <Link href="/#faq" className="nav-link">Questions</Link>
         </nav>
 
-        <Link href="/download" className="btn-paper inline-flex h-10 items-center gap-2 rounded-full px-5 text-sm font-semibold hover:-translate-y-0.5">
-          Start a download
+        <Link href="/#download" className="btn-paper inline-flex h-10 items-center gap-2 rounded-full px-5 text-sm font-semibold hover:-translate-y-0.5">
+          Get the app
           <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </Link>
       </div>

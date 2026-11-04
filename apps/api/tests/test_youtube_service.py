@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app.services.youtube import get_video_metadata, settings
+from app.services.youtube import YouTubeBlockedError, get_video_metadata, settings
 
 
 class GetVideoMetadataTests(unittest.TestCase):
@@ -46,6 +46,8 @@ class GetVideoMetadataTests(unittest.TestCase):
 
         self.assertFalse(metadata["is_playlist"])
         self.assertEqual(metadata["playlist_count"], 0)
+        self.assertEqual(metadata["thumbnail"], "https://example.com/thumb.jpg")
+        self.assertFalse(metadata["is_live"])
         self.assertEqual(metadata["formats"], [{
             "format_id": "137",
             "resolution": "1080p",
@@ -53,6 +55,53 @@ class GetVideoMetadataTests(unittest.TestCase):
             "ext": "mp4",
             "filesize": 1000,
         }])
+
+
+    @patch("app.services.youtube.yt_dlp.YoutubeDL")
+    def test_single_flag_ignores_playlist_and_restricts_extractors(self, youtube_dl):
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {"id": "v", "live_status": "is_live"}
+
+        metadata = get_video_metadata("https://www.youtube.com/watch?v=v&list=PL1", single=True)
+
+        options = youtube_dl.call_args.args[0]
+        self.assertTrue(options["noplaylist"])
+        self.assertEqual(options["allowed_extractors"], ["youtube", "youtube:.*"])
+        self.assertEqual(options["extractor_args"]["youtube"]["player_skip"], ["js"])
+        self.assertTrue(metadata["is_live"])
+
+    @patch("app.services.youtube.yt_dlp.YoutubeDL")
+    def test_errors_become_value_error(self, youtube_dl):
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = RuntimeError("Video unavailable")
+        with self.assertRaisesRegex(ValueError, "Video unavailable"):
+            get_video_metadata("https://www.youtube.com/watch?v=v")
+
+
+    @patch("app.services.youtube.yt_dlp.YoutubeDL")
+    def test_bot_check_becomes_youtube_blocked(self, youtube_dl):
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = RuntimeError('ERROR: [youtube] jNQXAC9IVRw: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication.')
+        with self.assertRaises(YouTubeBlockedError) as raised:
+            get_video_metadata("https://www.youtube.com/watch?v=v")
+        self.assertNotIn("cookies", str(raised.exception))
+
+
+    def test_proxy_only_when_configured(self):
+        from app.services.youtube import base_ydl_options
+        self.assertNotIn("proxy", base_ydl_options())
+        with patch.object(settings, "YT_PROXY", "http://user:pw@proxy.example:8080"):
+            self.assertEqual(base_ydl_options()["proxy"], "http://user:pw@proxy.example:8080")
+
+
+    @patch("app.services.youtube.yt_dlp.YoutubeDL")
+    def test_proxy_credentials_never_reach_the_error(self, youtube_dl):
+        proxy = "http://user:s3cret@proxy.example:8080"
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = RuntimeError(f"Unable to connect to proxy {proxy}")
+        with patch.object(settings, "YT_PROXY", proxy), self.assertRaises(ValueError) as raised, self.assertLogs("app.services.youtube") as logs:
+            get_video_metadata("https://www.youtube.com/watch?v=v")
+        self.assertNotIn("s3cret", str(raised.exception))
+        self.assertNotIn("s3cret", "".join(logs.output))
+        # Any other URL with credentials is masked too.
+        from app.services.youtube import redact
+        self.assertEqual(redact("via https://a:b@other.example/x"), "via https://***@other.example/x")
 
 
 if __name__ == "__main__":

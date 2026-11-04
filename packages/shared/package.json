@@ -1,0 +1,18 @@
+{
+  "name": "@dltube/shared",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./time": "./src/time.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test \"src/**/*.test.mjs\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

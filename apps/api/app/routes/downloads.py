@@ -1,138 +1,207 @@
 import asyncio
+import logging
 import os
 import uuid
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from redis.asyncio import Redis
 
-from app.config import get_settings
-from app.schemas.download import DownloadCreate, JobResponse
-from app.services.youtube import get_video_metadata, validate_youtube_url
-from app.tasks.convert_video import convert_video_task
+from app.config import Settings, get_settings
+from app.schemas.download import MIN_CLIP_SECONDS, DownloadCreate, DownloadScopeEnum, JobResponse
+from app.services.youtube import YouTubeBlockedError, get_video_metadata, validate_youtube_url
+from app.tasks.convert_video import clip_length, convert_video_task
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 JOB_TTL_SECONDS = 24 * 60 * 60
+# Duration reported by YouTube is rounded; allow a little slack on the end time.
+DURATION_TOLERANCE_SECONDS = 1
 
 
-async def get_redis(settings=Depends(get_settings)):
-    client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
-    try:
-        yield client
-    finally:
-        await client.aclose()
+def get_redis(request: Request) -> Redis:
+    return request.app.state.redis
 
 
 def job_key(job_id: str) -> str:
     return f"download:job:{job_id}"
 
 
-async def enforce_rate_limit(request: Request, redis: Redis = Depends(get_redis), settings=Depends(get_settings)):
-    """Bound expensive anonymous metadata and conversion requests.
+def optional_float(value: str | None) -> float | None:
+    return float(value) if value else None
 
-    Use the direct peer address instead of client-controlled forwarding headers.
-    Deployments behind a proxy should configure the proxy/server to preserve the
-    real client address before enabling proxy header handling.
+
+def client_ip(request: Request, header: str) -> str:
+    """The client address: from ``header`` when the platform's proxy sets it, else the socket peer.
+
+    Only name a header the proxy always overwrites. On Render that's Cloudflare's
+    CF-Connecting-IP: X-Forwarded-For keeps whatever the client sent and ends with a
+    Cloudflare edge IP, so neither its first nor its last entry identifies the client.
     """
-    client = request.client.host if request.client else "unknown"
+    return (request.headers.get(header) if header else None) or (request.client.host if request.client else "unknown")
+
+
+async def enforce_rate_limit(request: Request, redis: Redis = Depends(get_redis), settings: Settings = Depends(get_settings)):
+    """Bound expensive anonymous metadata and conversion requests, per client IP.
+
+    If Redis is unreachable the request is refused with 503 (fail closed) rather
+    than letting unbounded yt-dlp/ffmpeg work through.
+    """
+    client = client_ip(request, settings.CLIENT_IP_HEADER)
     key = f"download:rate:{client}"
     try:
         count = await redis.incr(key)
         if count == 1:
             await redis.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS)
     except Exception as error:
-        raise HTTPException(status_code=503, detail="Rate limiting is unavailable. Please try again.") from error
+        logger.error("Rate limiting unavailable, Redis error: %r", error)
+        raise HTTPException(status_code=503, detail="The service is temporarily unavailable. Please try again shortly.") from error
     if count > settings.RATE_LIMIT_REQUESTS:
         raise HTTPException(status_code=429, detail="Too many requests. Please try again shortly.")
 
 
-@router.get("/metadata")
-async def metadata(url: str, _: None = Depends(enforce_rate_limit)):
-    if len(url) > 2048:
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
-    if not validate_youtube_url(url):
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
-
+async def fetch_metadata(url: str, settings: Settings, single: bool = False) -> dict[str, Any]:
     try:
-        data = await asyncio.wait_for(asyncio.to_thread(get_video_metadata, url), timeout=30)
+        # yt-dlp is blocking; keep it off the event loop. A timed-out thread keeps
+        # running in the background until yt-dlp's own socket timeout ends it.
+        return await asyncio.wait_for(
+            asyncio.to_thread(get_video_metadata, url, single), timeout=settings.METADATA_TIMEOUT_SECONDS
+        )
+    except YouTubeBlockedError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except TimeoutError as error:
-        raise HTTPException(status_code=504, detail="Metadata lookup timed out. Please try again.") from error
+        raise HTTPException(status_code=504, detail="Looking up the video timed out. Please try again.") from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
-    return {
-        "id": data.get("id"),
-        "title": data.get("title", "Unknown Title"),
-        "duration": data.get("duration", 0),
-        "thumbnail": data.get("thumbnail_url"),
-        "channel": data.get("channel", "Unknown Channel"),
-        "formats": data.get("formats", []),
-        "is_playlist": data.get("is_playlist", False),
-        "playlist_count": data.get("playlist_count", 0),
-        "playlist_title": data.get("playlist_title"),
-    }
+
+def format_clock(seconds: float) -> str:
+    seconds = int(seconds)
+    h, m, s = seconds // 3600, seconds // 60 % 60, seconds % 60
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def check_against_video(req: DownloadCreate, info: dict[str, Any], max_duration: int) -> str | None:
+    """Rules that need the video's metadata. Returns an error message or None."""
+    if info.get("is_live"):
+        return "Live streams can't be downloaded. Try again after the stream has ended."
+    if info.get("is_playlist"):
+        return "This link is a playlist. Choose \"Whole playlist\" to download it."
+    duration = info.get("duration") or 0
+    if not duration:
+        # Fail closed: without a duration the length limit can't be enforced.
+        return "Couldn't determine the length of this video, so it can't be downloaded."
+    if req.is_clip and duration:
+        if req.end_time is not None and req.end_time > duration + DURATION_TOLERANCE_SECONDS:
+            return f"End time is past the end of the video ({format_clock(duration)})."
+        if req.start_time is not None and req.start_time >= duration:
+            return f"Start time is past the end of the video ({format_clock(duration)})."
+    length = clip_length(req.start_time, req.end_time, duration)
+    if req.is_clip and length < MIN_CLIP_SECONDS:
+        return f"The section must be at least {MIN_CLIP_SECONDS} second long."
+    if length > max_duration:
+        what = "section" if req.is_clip else "video"
+        return f"This {what} is {format_clock(length)} long; the limit is {format_clock(max_duration)}. Choose a shorter section."
+    return None
+
+
+@router.get("/metadata")
+async def metadata(
+    url: str = Query(..., max_length=2048),
+    settings: Settings = Depends(get_settings),
+    _: None = Depends(enforce_rate_limit),
+):
+    if not validate_youtube_url(url):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+    data = await fetch_metadata(url, settings)
+    data["max_duration_seconds"] = settings.MAX_DURATION_SECONDS
+    return data
 
 
 @router.post("/download", response_model=JobResponse)
-async def create_download(download_req: DownloadCreate, redis: Redis = Depends(get_redis), _: None = Depends(enforce_rate_limit)):
+async def create_download(
+    download_req: DownloadCreate,
+    redis: Redis = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+    _: None = Depends(enforce_rate_limit),
+):
     url = download_req.youtube_url
     if not validate_youtube_url(url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
 
+    # Playlists are checked per item by the worker; a single video is checked
+    # up front so the user gets an immediate, specific error.
+    if download_req.scope == DownloadScopeEnum.single:
+        info = await fetch_metadata(url, settings, single=True)
+        problem = check_against_video(download_req, info, settings.MAX_DURATION_SECONDS)
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
+
     job_id = str(uuid.uuid4())
     key = job_key(job_id)
-    await redis.hset(key, mapping={
-        "id": job_id,
-        "youtube_url": url,
-        "format": download_req.format.value,
-        "quality": download_req.quality,
-        "scope": download_req.scope.value,
-        "status": "pending",
-        "progress": "0",
-        "error_message": "",
-    })
-    await redis.expire(key, JOB_TTL_SECONDS)
-
     try:
+        await redis.hset(key, mapping={
+            "id": job_id,
+            "youtube_url": url,
+            "format": download_req.format.value,
+            "quality": download_req.quality,
+            "scope": download_req.scope.value,
+            "start_time": "" if download_req.start_time is None else str(download_req.start_time),
+            "end_time": "" if download_req.end_time is None else str(download_req.end_time),
+            "status": "pending",
+            "progress": "0",
+            "error_message": "",
+        })
+        await redis.expire(key, JOB_TTL_SECONDS)
         convert_video_task.delay(job_id)
     except Exception as error:
-        await redis.hset(key, mapping={"status": "failed", "error_message": "Could not queue the download. Please try again."})
+        logger.error("Could not queue download %s: %r", job_id, error)
         raise HTTPException(status_code=503, detail="Could not queue the download. Please try again.") from error
 
-    return JobResponse(id=job_id, status="pending", progress=0)
+    return JobResponse(
+        id=job_id, status="pending", progress=0,
+        start_time=download_req.start_time, end_time=download_req.end_time,
+    )
 
 
 @router.get("/download/{download_id}/status", response_model=JobResponse)
-async def get_download_status(download_id: str, redis: Redis = Depends(get_redis)):
-    job = await redis.hgetall(job_key(download_id))
+async def get_download_status(download_id: uuid.UUID, redis: Redis = Depends(get_redis)):
+    job = await redis.hgetall(job_key(str(download_id)))
     if not job:
         raise HTTPException(status_code=404, detail="Download not found")
 
-    download_url = None
-    if job.get("status") == "completed" and job.get("file_path") and os.path.isfile(job["file_path"]):
-        download_url = f"/api/downloads/{download_id}/file"
+    status, error_message, download_url = job.get("status", "processing"), job.get("error_message") or None, None
+    if status == "completed":
+        if job.get("file_path") and os.path.isfile(job["file_path"]):
+            download_url = f"/api/downloads/{download_id}/file"
+        else:
+            # The disk is wiped when the server restarts or sleeps; the job record in Redis outlives it.
+            status, error_message = "failed", "This file has expired. Please convert it again."
 
     return JobResponse(
-        id=download_id,
-        status=job.get("status", "processing"),
-        progress=int(float(job.get("progress", 0))),
-        error_message=job.get("error_message") or None,
+        id=str(download_id),
+        status=status,
+        progress=int(float(job.get("progress") or 0)),
+        error_message=error_message,
         download_link=download_url,
+        start_time=optional_float(job.get("start_time")),
+        end_time=optional_float(job.get("end_time")),
     )
 
 
 @router.get("/downloads/{download_id}/file")
-async def download_file(download_id: str, redis: Redis = Depends(get_redis)):
-    job = await redis.hgetall(job_key(download_id))
+async def download_file(download_id: uuid.UUID, redis: Redis = Depends(get_redis), settings: Settings = Depends(get_settings)):
+    job = await redis.hgetall(job_key(str(download_id)))
     if not job or job.get("status") != "completed" or not job.get("file_path"):
         raise HTTPException(status_code=404, detail="File not found")
     output_path = os.path.realpath(job["file_path"])
-    download_root = os.path.realpath(get_settings().DOWNLOAD_DIR)
+    download_root = os.path.realpath(settings.DOWNLOAD_DIR)
     if not output_path.startswith(download_root + os.sep) or not os.path.isfile(output_path):
         raise HTTPException(status_code=410, detail="File has expired")
 
     is_playlist = job.get("scope") == "playlist"
     media_type = "application/zip" if is_playlist else ("audio/mpeg" if job.get("format") == "mp3" else "video/mp4")
-    extension = "zip" if is_playlist else job.get("format", "mp4")
-    filename = f"{job.get('title', 'download')}.{extension}".replace("/", "-").replace("\\", "-")
+    # The worker stores a sanitized filename; Starlette encodes non-ASCII via filename*=.
+    filename = job.get("filename") or f"download.{'zip' if is_playlist else job.get('format', 'mp4')}"
     return FileResponse(output_path, media_type=media_type, filename=filename)

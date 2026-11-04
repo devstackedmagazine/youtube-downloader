@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* Same tokens and button styles as apps/web/src/styles/globals.css. No web fonts (strict CSP, offline). */
+:root {
+  --paper: #f6f2e9;
+  --ink: #11110f;
+  --muted: #77736a;
+  --signal: #ff6b35;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Arial, sans-serif;
+}
+button, input, select { font: inherit; }
+.font-display { font-family: "Cabinet Grotesk", "Arial Narrow", Arial, sans-serif; }
+.btn-signal, .btn-ink, .btn-paper { transition: background-color 240ms ease, color 240ms ease, transform 240ms ease, box-shadow 240ms ease; }
+.btn-signal { background-color: #ff6b35; color: #11110f; box-shadow: 0 4px 0 #c9471b, 0 12px 22px rgba(201, 71, 27, .18); }
+.btn-signal:not(:disabled):hover { background-color: #ff8b63; transform: translateY(-3px); box-shadow: 0 7px 0 #c9471b, 0 18px 28px rgba(201, 71, 27, .22); }
+.btn-ink { background-color: #11110f; color: #f6f2e9; box-shadow: 0 4px 0 #000, 0 12px 22px rgba(17, 17, 15, .18); }
+.btn-ink:not(:disabled):hover { background-color: #2b2a26; transform: translateY(-3px); }
+.btn-paper { background-color: #f6f2e9; color: #11110f; box-shadow: 0 4px 0 #c9c1b3; }
+.btn-paper:not(:disabled):hover { background-color: #ff6b35; transform: translateY(-3px); box-shadow: 0 7px 0 #c9471b; }
+.btn-signal:focus-visible, .btn-ink:focus-visible, .btn-paper:focus-visible, .toggle:focus-visible { outline: 3px solid rgba(255, 107, 53, .5); outline-offset: 3px; }
+.toggle { transition: transform 220ms ease, box-shadow 220ms ease, background-color 220ms ease, color 220ms ease; }
+.toggle.is-active { background-color: #11110f; color: #f6f2e9; box-shadow: 0 3px 0 #ff6b35; }
+.card { box-shadow: 0 4px 0 #c9c1b3, 0 12px 22px rgba(17, 17, 15, .08); }
+.card-dark { box-shadow: 0 4px 0 #ff6b35, 0 12px 22px rgba(0, 0, 0, .18); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

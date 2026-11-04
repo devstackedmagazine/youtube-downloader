@@ -1,0 +1,31 @@
+[package]
+name = "dltube"
+version = "0.1.0"
+description = "Download YouTube videos, sections and playlists as MP4 or MP3 on your own computer"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+name = "dltube_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+dltube-core = { path = "core" }
+tauri = { version = "=2.12.5", features = [] }
+tauri-plugin-dialog = "=2.8.4"
+tauri-plugin-opener = "=2.7.2"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+
+[workspace]
+members = ["core"]
+resolver = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

@@ -15,9 +15,9 @@ export default function Footer() {
             </p>
           </div>
           <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm text-[#8b887f]">
-            <Link href="/download" className="footer-link">Download</Link>
+            <Link href="/#download" className="footer-link">Get the app</Link>
             <Link href="/#capabilities" className="footer-link">Capabilities</Link>
-            <a href="mailto:hello@dltube.local" className="footer-link">Contact</a>
+            <a href="https://github.com/devstackedmagazine/youtube-downloader" className="footer-link">Source (MIT)</a>
             <span>Use responsibly</span>
           </div>
         </div>
